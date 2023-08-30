@@ -7,3 +7,5 @@ import code
 # ... where you want to jump in
 code.interact(local=locals())
 ```
+
+You will need an EarthData login to download ALOS PALSAR images. Get one from https://urs.earthdata.nasa.gov/.
