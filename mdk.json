@@ -1,5 +1,5 @@
 {
-	"image": "docker.io/hysds/isce2:latest",
+	"image": "docker.io/hysds/isce2_live_dev:latest",
 	"options": [
 		"--network=host"
 	],

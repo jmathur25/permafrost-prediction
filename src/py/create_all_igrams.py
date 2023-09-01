@@ -1,5 +1,5 @@
-from methods.create_alos_interferogram import main
-from py.data.consts import ISCE2_OUTPUTS_DIR
+from methods.create_alos_interferogram import process_alos
+from data.consts import ISCE2_OUTPUTS_DIR
 
 igrams = [
     ("ALPSRP021272170",	"ALPSRP027982170"),
@@ -33,4 +33,4 @@ for (alos1, alos2) in igrams:
         igrams_to_do.append((alos1, alos2))
 
 for (alos1, alos2) in igrams_to_do:
-    main(alos1, alos2)
+    process_alos(alos1, alos2)
