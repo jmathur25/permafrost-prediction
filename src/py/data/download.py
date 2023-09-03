@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import code
 
-from consts import CALM_DOWNLOAD_URL, DATA_DIR, RAW_DATA_DIR
+from consts import CALM_DOWNLOAD_URL, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
 from sar import alos_palsar_granule
 from utils import prompt_user
 
@@ -28,7 +28,7 @@ class StandardDataFormatColumns(enum.Enum):
             cls.check_cols(df)
         except Exception as e:
             raise ValueError(f"Invalid df columns: {df.columns}. Error: {e}")
-        savepath = DATA_DIR / site_code / "data.csv"
+        savepath = CALM_PROCESSSED_DATA_DIR / site_code / "data.csv"
         savepath.parent.mkdir(parents=True, exist_ok=True)
         # Technically we should do this check before running all the processing code. Re-evaluate later.
         if savepath.exists():
@@ -65,7 +65,7 @@ class CALMDownloadSite(enum.Enum):
 
         if self == CALMDownloadSite.BARROW:
             url = urljoin(CALM_DOWNLOAD_URL, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls")
-            savepath = RAW_DATA_DIR / "U1_alt_1995_2022.xls"
+            savepath = CALM_RAW_DATA_DIR / "U1_alt_1995_2022.xls"
             download_file(url, savepath)
             # We may need to use other sheets in the future
             df = pd.read_excel(savepath, sheet_name='data')
