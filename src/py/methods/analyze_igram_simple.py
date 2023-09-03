@@ -64,7 +64,7 @@ print(f"For alos1 on {alos_d1}, closest date is {alos_d1_nearest_calm_date}")
 print(f"For alos2 on {alos_d2}, closest date is {alos_d2_nearest_calm_date}")
 
 #%%
-ex = df_calm[(df_calm['point_id'] == 1) & (df_calm['date'] >= pd.to_datetime('2006')) & (df_calm['date'] < pd.to_datetime('2007'))]
+ex = df_calm[(df_calm['date'] >= pd.to_datetime('2007')) & (df_calm['date'] <= pd.to_datetime('2010'))]
 plt.plot(ex['date'], ex['alt_m'], marker='o', linestyle='-')
 
 # %%
@@ -74,17 +74,26 @@ def try_float(x):
     except:
         return np.nan
 # TODO: do earlier? handle 'w'?
-df_calm['alt_m'] = df_calm['alt_m'].apply(try_float)
+# TODO: fix m?
+df_calm['alt_m'] = df_calm['alt_m'].apply(try_float) / 100
 df_calm_d1 = df_calm[df_calm['date'] == alos_d1_nearest_calm_date]
 df_calm_d2 = df_calm[df_calm['date'] == alos_d2_nearest_calm_date]
 
 calib_point_id = 61
+
+# %%
 
 def get_alt_for_calib_point(calib_point_id, df):
     row1 = df[df['point_id'] == calib_point_id]
     assert len(row1) == 1
 
     return row1.alt_m.values[0]
+
+def integrand(z):
+    po = 0.9
+    pf = 0.45
+    k = 1
+    return pf + (po - pf)*np.exp(-k*z)
 
 def alt_to_surface_deformation(alt):
     # paper assumes exponential decay from 90% porosity to 45% porosity
@@ -98,10 +107,31 @@ def alt_to_surface_deformation(alt):
     po = 0.9
     pf = 0.45
     k = 1
-    integral = (po * k *  alt + (pf - po) * (-np.exp(-k*alt)) + (pf - po))/k
+    # integral = (po * k *  alt + (pf - po) * (-np.exp(-k*alt)) + (pf - po))/k
     pw = 0.997 # g/m^3
     pi = 0.9168 # g/cm^3
+    integral, error = quad(integrand, 0, alt)
+    print("integral error", error)
     return (pw - pi) / pi * integral
+
+from scipy.integrate import quad
+from scipy.optimize import root_scalar
+def compute_alt_f_deformation(deformation):
+    po = 0.9
+    pf = 0.45
+    k = 1
+    pw = 0.997 # g/m^3
+    pi = 0.9168 # g/cm^3
+    integral_val = deformation * (pi / (pw - pi))
+    
+    # Define the function to find its root
+    def objective(x, target):
+        integral, _ = quad(integrand, 0, x)
+        return integral - target
+
+    result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method='brentq')
+    assert result.converged
+    return result.root
 
 def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     alt1 = get_alt_for_calib_point(point_id, df_calm_d1)
@@ -111,20 +141,39 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     def2 = alt_to_surface_deformation(alt2)
     
     return def1 - def2
+
     
 
 calib_def_12 = compute_deformation_for_point(calib_point_id, df_calm_d1, df_calm_d2)
+
+alt1 = get_alt_for_calib_point(calib_point_id, df_calm_d1)
+def1 = alt_to_surface_deformation(alt1)
+alt1_hat = compute_alt_f_deformation(def1)
+print(f"For an ALT of {alt1}, we got back {alt1_hat}")
+
+alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
+def2 = alt_to_surface_deformation(alt2)
+alt2_hat = compute_alt_f_deformation(def2)
+print(f"For an ALT of {alt2}, we got back {alt2_hat}")
+
+alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
 
 print(f"Estimated ground deformation at calibration point {calib_point_id}: {np.round(calib_def_12, decimals=3)} m")
 
 # %%
 intfg_unw_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.unw'
 intfg_unw_conncomp_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.unw.conncomp'
+# intfg_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.flat'
 
 # reading the multi-looked unwrapped interferogram
 ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
 igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
 ds = None
+
+# ds = gdal.Open(str(intfg_file), gdal.GA_ReadOnly)
+# igram = ds.GetRasterBand(1).ReadAsArray()
+# igram_unw_phase = np.angle(igram)# trying raw
+# ds = None
 
 # reading the connected component file
 ds = gdal.Open(str(intfg_unw_conncomp_file), gdal.GA_ReadOnly)
@@ -162,15 +211,20 @@ print(bbox)
 
 # %%
 # ds = gdal.Open(str(alos_isce_outputs_dir / "geometry" / "incLocal.rdr"))
-inc_angle_img = ds.GetRasterBand(1).ReadAsArray()
-ds = None
+# inc_angle_img = ds.GetRasterBand(1).ReadAsArray()
+# ds = None
 
 # %%
 igram_unw_phase_slice = igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
 # cc_slice = connected_components[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
 
 # assert np.unique(cc_slice)
+plt.imshow(igram_unw_phase_slice, cmap='viridis')
+plt.colorbar()
+plt.title('Unwrapped phase')
+plt.show()
 
+#%%
 def compute_phase_offset(
     point_to_pixel,
     bbox,
@@ -216,21 +270,24 @@ igram_def = compute_deformation(igram_unw_phase_slice_corr, bbox, incidence_angl
 
 # %%
 # Plot deformations
-plt.imshow(igram_def, cmap='viridis', origin='lower')
+def plot_change(img, point_to_pixel, label):
+    plt.imshow(img, cmap='viridis', origin='lower')
 
-# Add red boxes
-for point in point_to_pixel:
-    point_id, y, x = point
-    y -= bbox[0][0]
-    x -= bbox[0][1]
-    plt.gca().add_patch(plt.Rectangle((x - 2.5, y - 2.5), 3, 3, fill=None, edgecolor='red', linewidth=2))
+    # Add red boxes
+    for point in point_to_pixel:
+        point_id, y, x = point
+        y -= bbox[0][0]
+        x -= bbox[0][1]
+        plt.gca().add_patch(plt.Rectangle((x - 1.5, y - 1.5), 3, 3, fill=None, edgecolor='red', linewidth=2))
+        
+        # Annotate each box with the point #
+        plt.annotate(f"#{point_id}", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=5, color='white')
+
+    plt.colorbar()
+    plt.title(label)
+    plt.show()
     
-    # Annotate each box with the point #
-    plt.annotate(f"#{point_id}", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=5, color='white')
-
-plt.colorbar()
-plt.title('Deformations')
-plt.show()
+plot_change(igram_def, point_to_pixel, "Predicted Deformations")
 
 # %%
 deformations = []
@@ -267,5 +324,98 @@ print(f"Pearson R: {pearson_corr}")
 
 rmse = np.sqrt(mean_squared_error(deformations, predicted_deformations))
 print(f"RMSE: {rmse}")
+
+# %%
+def construct_image(bbox, point_to_pixel, values, n=3):
+    dy = bbox[1][0] - bbox[0][0]
+    dx = bbox[1][1] - bbox[0][1]
+    image = np.full((dy, dx), np.nan)
+
+    # Populate the image array with ground truth deformations at specified pixel locations
+    n = 3
+    for (point, deformation) in zip(point_to_pixel, values):
+        point_id, y, x = point
+        y -= bbox[0][0]
+        x -= bbox[0][1]
+        n_over_2 = n // 2
+        extra = n % 2
+        image[y - n_over_2 : y + n_over_2 + extra , x - n_over_2 : x + n_over_2 + extra] = deformation
+    return image
+
+gt_def = construct_image(bbox, point_to_pixel, deformations)
+plot_change(gt_def, point_to_pixel, "Ground-Truth Deformations")
+
+# %%
+dy = bbox[1][0] - bbox[0][0]
+dx = bbox[1][1] - bbox[0][1]
+alt_predictions_img = np.full((dy, dx), np.nan)
+for yi in tqdm.tqdm(range(igram_def.shape[0])):
+    for xi in range(igram_def.shape[1]):
+        change = -igram_def[yi, xi]
+        if change < 0:
+            print(f"Skipping {yi}, {xi} because deformation is positive")
+            continue
+        alt = compute_alt_f_deformation(change)
+        alt_predictions_img[yi, xi] = alt
+
+print("Predicting ALT per point")
+alt_predictions = []
+for point, def_pred in zip(point_to_pixel[:,0], predicted_deformations):
+    change = -def_pred
+    if change < 0:
+        print(f"Skipping {point} because deformation is positive")
+        alt_predictions.append(np.nan)
+        continue
+    alt = compute_alt_f_deformation(change)
+    alt_predictions.append(alt)
+
+# %%
+plot_change(alt_predictions_img, point_to_pixel, "ALT predictions")
+# %%
+gt_alt = []
+for point in point_to_pixel[:,0]:
+    def_12 = compute_deformation_for_point(point, df_calm_d1, df_calm_d2)
+    if np.isnan(def_12):
+        print(f"Point {point} has NA deformation: {point}")
+    change = -def_12
+    if change < 0:
+        print(f"Skipping point {point} because deformation is positive")
+        continue
+    alt = compute_alt_f_deformation(change)
+    gt_alt.append(alt)
+
+gt_alt_img = construct_image(bbox, point_to_pixel, gt_alt)
+plot_change(gt_alt_img, point_to_pixel, "Ground-Truth ALT")
+
+# %%
+def compute_stats(alt_pred, alt_gt):
+    alt_pred = np.array(alt_pred)
+    alt_gt = np.array(alt_gt)
+    nan_mask = np.isnan(alt_pred)
+    print(f"number of nans: {nan_mask.sum()}/{len(alt_predictions)}")
+    not_nan_mask = ~nan_mask
+    alt_pred = alt_pred[not_nan_mask]
+    alt_gt = alt_gt[not_nan_mask]
+    diff = np.array(alt_pred) - np.array(alt_gt)
+    e = 0.079
+    psi_stat = np.square(diff/e)
+    psi_stat_mean = np.mean(psi_stat)
+    print("psi avg", psi_stat_mean)
+    mask_is_great = psi_stat < 1
+    frac_great_match = mask_is_great.mean() 
+    
+    resalt_e = 2*e
+    alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
+    alt_within_uncertainty_mask &= ~mask_is_great # exclude ones that are great
+    frac_good_match = alt_within_uncertainty_mask.mean()
+    
+    frac_bad_match = 1.0 - frac_great_match - frac_good_match
+    
+    print(f"frac great match: {frac_great_match}, frac good match: {frac_good_match}, frac bad match: {frac_bad_match}")
+
+    bias = diff.mean()
+    print("Bias", bias)
+    
+compute_stats(alt_predictions, gt_alt)
 
 # %%
