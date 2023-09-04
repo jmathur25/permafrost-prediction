@@ -186,6 +186,7 @@ def compute_phase_offset(
         px_y - n_over_2 : px_y + n_over_2 + extra, px_x - n_over_2 : px_x + n_over_2 + extra
     ]
     calib_phase = np.mean(calib_phase_slice)
+    print("CP", calib_phase)
     
     los_def = calib_point_def * np.cos(incidence_angle)
     los_phase = 2 * np.pi *los_def / wavelength
@@ -194,13 +195,13 @@ def compute_phase_offset(
     return phase_diff
     
 # phase computed of alos1 - alos2, so  must be computed this way too
-incidence_angle = 38.7*np.pi/180
-wavelength = 0.2360571
+# incidence_angle = 38.7*np.pi/180
+# wavelength = 0.2360571
 with open(alos_isce_outputs_dir / "PICKLE/interferogram", "rb") as fp:
     pickle_isce_obj = pickle.load(fp)
         
 radar_wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
-incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']
+incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']*np.pi/180
 
 print('radar wavelength', radar_wavelength)
 print('incidence angle', incidence_angle)

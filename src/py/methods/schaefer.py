@@ -90,9 +90,11 @@ def schaefer_method():
 
     calib_alt = df_alt_gt.loc[calib_point_id]['alt_m']
     calib_subsidence = alt_to_surface_deformation(calib_alt)
+    print("OVERRIDING CALIB")
+    calib_subsidence = 0.012991343843446251
 
     # RHS and LHS per-pixel of eq. 2
-    n = len(SCHAEFER_INTEFEROGRAMS)
+    n = 1 # len(SCHAEFER_INTEFEROGRAMS)
     lhs_all = np.zeros((n, len(df_calm_points)))
     rhs_all = np.zeros((n, 2))
     for i, (scene1, scene2) in enumerate(SCHAEFER_INTEFEROGRAMS[:n]):
@@ -124,7 +126,125 @@ def schaefer_method():
         alt_pred.append(alt)
     
     alt_pred = np.array(alt_pred)
-    alt_gt = df_alt_gt['alt_m'].values
+    # alt_gt = df_alt_gt['alt_m'].values
+    alt_gt = np.array([0.1631010921749886,
+ 0.21059020516282617,
+ 0.39489583638918296,
+ 0.2000000000000093,
+ 0.27000000000008983,
+ 0.16910744861387997,
+ 0.31500000000025635,
+ 0.22174207722629452,
+ 0.15755293895144173,
+ 0.16080768914420407,
+ 0.2500000000000514,
+ 0.2300000000000276,
+ 0.28095575934001304,
+ 0.14255118931591385,
+ 0.28574825947458815,
+ 0.233980142346234,
+ 0.22174207722629452,
+ 0.19669217338189943,
+ 0.23249656262666482,
+ 0.11740442678455724,
+ 0.1520574800667899,
+ 0.26000000000006857,
+ 0.2550000000000595,
+ 0.16080768914420407,
+ 0.158882499529945,
+ 0.33587648200172887,
+ 0.15687208303454628,
+ 0.23734200351469648,
+ 0.22930286387644735,
+ 0.27724741720850793,
+ 0.21691979607984774,
+ 0.16156425778480227,
+ 0.20391595161245626,
+ 0.2550000000000595,
+ 0.31500000000025635,
+ 0.4877690200345065,
+ 0.3424583235369454,
+ 0.2309807040560353,
+ 0.23249656262666482,
+ 0.20877236719757938,
+ 0.2990737828049927,
+ 0.06161856960203414,
+ 0.11659147974672836,
+ 0.18583622029058175,
+ 0.19119231514370685,
+ 0.2900000000001477,
+ 0.3407863929892173,
+ 0.27698680100095585,
+ 0.17883516786222656,
+ 0.24572693309810353,
+ 0.26047365523683397,
+ 0.37264936479486194,
+ 0.19484213306080736,
+ 0.19820137284450626,
+ 0.1584198393596726,
+ 0.23500000000003238,
+ 0.3000000000001859,
+ 0.18665055934601893,
+ 0.27808932355247246,
+ 0.17200018646025086,
+ 0.20051000308717978,
+ 0.2927500024795469,
+ 0.2608104439529393,
+ 0.24014740785729846,
+ 0.1783453422967028,
+ 0.1414732033296422,
+ 0.21891013951897584,
+ 0.31000000000023087,
+ 0.1374743459794897,
+ 0.42902879012839795,
+ 0.22765122176988176,
+ 0.26641684691195405,
+ 0.28856769225179424,
+ 0.2985190360716896,
+ 0.17269800607764904,
+ 0.2512769863212567,
+ 0.12296033937275691,
+ 0.20741851922611573,
+ 0.2550000000000595,
+ 0.11579094008221062,
+ 0.4661041390816299,
+ 0.23138697789297785,
+ 0.32747392534597286,
+ 0.16438628522292437,
+ 0.18744912305648057,
+ 0.132111840797652,
+ 0.1909857267963512,
+ 0.20812973192138007,
+ 0.21500000000001637,
+ 0.31000000000023087,
+ 0.14392280987860218,
+ 0.7299999999999736,
+ 0.10142763618941457,
+ 0.2512769863212567,
+ 0.23179695847706627,
+ 0.12153701492821847,
+ 0.11448375428565144,
+ 0.17338267157897205,
+ 0.18754009887423112,
+ 0.22829602410447594,
+ 0.2767717345948258,
+ 0.171475002643378,
+ 0.2550000000000595,
+ 0.1550286493095738,
+ 0.14722161453634638,
+ 0.18186299751224885,
+ 0.21876658644062966,
+ 0.1259220887919869,
+ 0.1981052282646351,
+ 0.22496751643908136,
+ 0.2506781884284793,
+ 0.1273922294277428,
+ 0.1943856131813381,
+ 0.09815871423889137,
+ 0.2249682249513204,
+ 0.17541296978597481,
+ 0.1549886991836196,
+ 0.18233897081867392])
     compute_stats(alt_pred, alt_gt)
     
     print("CHECKING SIMPLER PRED")
@@ -162,6 +282,7 @@ def compute_ddt_ddf(df):
     
 
 def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence):
+    n = 3 # spatial avg procedures use a 3x3 window
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
     alos_d1 = get_date_for_alos(alos1)
     alos_d2 = get_date_for_alos(alos2)
@@ -197,13 +318,18 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     bbox = compute_bounding_box(point_to_pixel[:,[1,2]])
     print(f"Bounding box set to: {bbox}")
     
-    incidence_angle = 38.7*np.pi/180
-    igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id)
+    igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=3)
     igram_delta_def = compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, radar_wavelength)
 
+    print("PHASE SLICE")
+    print(igram_unw_delta_phase_slice)
+    
+    print("DELTA DEF")
+    print(igram_delta_def)
+    
+    n = 2
     lhs = []
     to_add = 0  #calib_subsidence if alos_d2 > alos_d1 else -calib_subsidence
-    n = 3
     n_over_2 = n // 2
     extra = n % 2
     for (_, y, x) in point_to_pixel:
@@ -235,14 +361,16 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.title(label)
     plt.show()
 
-def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id):
+def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=3):
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
     row = point_to_pixel[point_to_pixel[:,0] == calib_point_id]
     assert row.shape == (1, 3)
     y = row[0, 1] - bbox[0][0]
     x = row[0, 2] - bbox[0][1]
-    calib_phase = igram_unw_phase_slice[y, x]
-    return igram_unw_phase_slice - calib_phase
+    n_over_2 = n//2
+    extra = n % 2
+    calib_phase_slice = igram_unw_phase_slice[y - n_over_2:y+n_over_2 + extra, x-n_over_2:x+n_over_2+extra]
+    return igram_unw_phase_slice - calib_phase_slice.mean()
 
 def compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, wavelength):
     # TODO: incident angle per pixel
