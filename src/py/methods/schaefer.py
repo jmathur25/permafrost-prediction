@@ -69,9 +69,11 @@ def schaefer_method():
     df_temps = []
     for (_, df_t) in df_temp.groupby(['year']):
         compute_ddt_ddf(df_t)
-        df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
+        # df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
+    max_ddt = df_temp['ddt'].max()
+    df_temp['norm_ddt'] = df_temp['ddt'] / max_ddt
     df_temp = df_temp.set_index(['year', 'month', 'day'])
     
     df_calm = pd.read_csv(calm_file, parse_dates=['date'])
@@ -116,6 +118,9 @@ def schaefer_method():
     E += calib_subsidence
 
     alt_pred = []
+    # TODO: point to pixel needs to be represented better. 
+    # we are assuming `process_scene_pair` keeps them
+    # in the same order.
     for e, point in zip(E, point_to_pixel):
         if e < 0:
             print(f"Skipping {point} due to neg deformation")
@@ -170,7 +175,16 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     print(f"Processing {alos1} on {alos_d1} and {alos2} on {alos_d2}")
     delta_t_years = (alos_d2 - alos_d1).days / 365
     norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
+    print("NORM DT AFTER", norm_ddt_d2)
     norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
+    print("NORM DT BEFORE", norm_ddt_d1)
+    # ddt_d2 = get_ddt(df_temp, alos_d2)
+    # ddt_d1 = get_ddt(df_temp, alos_d1)
+    # larger = max(ddt_d2, ddt_d1)
+    # print("OVERRIDING DDT")
+    # norm_ddt_d2 = ddt_d2 / larger
+    # norm_ddt_d1 = ddt_d1 / larger
+    # print("NORM DTs", norm_ddt_d1, norm_ddt_d2)
     sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
         
@@ -216,6 +230,10 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
         
 def get_norm_ddt(df_temp, date):
     return df_temp.loc[date.year, date.month, date.day]['norm_ddt']
+
+
+def get_ddt(df_temp, date):
+    return df_temp.loc[date.year, date.month, date.day]['ddt']
 
 
 def plot_change(img, bbox, point_to_pixel, label):

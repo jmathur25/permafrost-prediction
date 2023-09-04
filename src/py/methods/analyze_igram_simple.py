@@ -97,6 +97,8 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     def1 = alt_to_surface_deformation(alt1)
     def2 = alt_to_surface_deformation(alt2)
     
+    print("FRAC DEF", def1/def2)
+    
     return def1 - def2
 
     
