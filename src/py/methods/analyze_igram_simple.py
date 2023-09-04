@@ -22,13 +22,13 @@ import tqdm
 sys.path.append("..")
 
 from methods.schaefer import alt_to_surface_deformation, compute_alt_f_deformation, compute_bounding_box, plot_change
-from utils import load_img, LatLon
+from utils import compute_stats, load_img, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR
 from data.utils import get_date_for_alos
 
 # %%
 alos1 = "ALPSRP021272170"
-alos2 = "ALPSRP027982170"
+alos2 = "ALPSRP189022170"
 
 alos_isce_outputs_dir = ISCE2_OUTPUTS_DIR/ f"{alos1}_{alos2}"
 
@@ -97,7 +97,7 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     def1 = alt_to_surface_deformation(alt1)
     def2 = alt_to_surface_deformation(alt2)
     
-    print("FRAC DEF", def1/def2)
+    # print("FRAC DEF", def1/def2)
     
     return def1 - def2
 
@@ -202,10 +202,10 @@ def compute_phase_offset(
 with open(alos_isce_outputs_dir / "PICKLE/interferogram", "rb") as fp:
     pickle_isce_obj = pickle.load(fp)
         
-radar_wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
+wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
 incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']*np.pi/180
 
-print('radar wavelength', radar_wavelength)
+print('radar wavelength', wavelength)
 print('incidence angle', incidence_angle)
 
 phase_corr = compute_phase_offset(
@@ -294,7 +294,7 @@ for point, def_pred in zip(point_to_pixel[:,0], predicted_deformations):
         continue
     alt = compute_alt_f_deformation(change)
     alt_predictions.append(alt)
-
+    
 # %%
 plot_change(alt_predictions_img, bbox, point_to_pixel, "ALT predictions")
 # %%
@@ -303,9 +303,12 @@ for point in point_to_pixel[:,0]:
     def_12 = compute_deformation_for_point(point, df_calm_d1, df_calm_d2)
     if np.isnan(def_12):
         print(f"Point {point} has NA deformation: {point}")
+        gt_alt.append(np.nan)
+        continue
     change = -def_12
     if change < 0:
         print(f"Skipping point {point} because deformation is positive")
+        gt_alt.append(np.nan)
         continue
     alt = compute_alt_f_deformation(change)
     gt_alt.append(alt)
@@ -314,43 +317,8 @@ gt_alt_img = construct_image(bbox, point_to_pixel, gt_alt)
 plot_change(gt_alt_img, bbox, point_to_pixel, "Ground-Truth ALT")
 
 # %%
-def compute_stats(alt_pred, alt_gt):
-    alt_pred = np.array(alt_pred)
-    alt_gt = np.array(alt_gt)
-    nan_mask = np.isnan(alt_pred)
-    print(f"number of nans: {nan_mask.sum()}/{len(alt_predictions)}")
-    not_nan_mask = ~nan_mask
-    alt_pred = alt_pred[not_nan_mask]
-    alt_gt = alt_gt[not_nan_mask]
-    diff = np.array(alt_pred) - np.array(alt_gt)
-    e = 0.079
-    psi_stat = np.square(diff/e)
-    psi_stat_mean = np.mean(psi_stat)
-    print("psi avg", psi_stat_mean)
-    mask_is_great = psi_stat < 1
-    frac_great_match = mask_is_great.mean() 
-    
-    resalt_e = 2*e
-    alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
-    alt_within_uncertainty_mask &= ~mask_is_great # exclude ones that are great
-    frac_good_match = alt_within_uncertainty_mask.mean()
-    
-    frac_bad_match = 1.0 - frac_great_match - frac_good_match
-    
-    print(f"frac great match: {frac_great_match}, frac good match: {frac_good_match}, frac bad match: {frac_bad_match}")
-
-    bias = diff.mean()
-    print("Bias", bias)
-    
-    r2 = r2_score(alt_pred, alt_gt)
-    print(f"R^2 score: {r2}")
-
-    pearson_corr, _ = pearsonr(alt_pred, alt_gt)
-    print(f"Pearson R: {pearson_corr}")
-
-    rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
-    print(f"RMSE: {rmse}")
-    
+alt_predictions = np.array(alt_predictions)
+gt_alt = np.array(gt_alt)
 compute_stats(alt_predictions, gt_alt)
 
 # %%

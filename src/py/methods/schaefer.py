@@ -69,11 +69,11 @@ def schaefer_method():
     df_temps = []
     for (_, df_t) in df_temp.groupby(['year']):
         compute_ddt_ddf(df_t)
-        # df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
+        df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
-    max_ddt = df_temp['ddt'].max()
-    df_temp['norm_ddt'] = df_temp['ddt'] / max_ddt
+    # max_ddt = df_temp['ddt'].max()
+    # df_temp['norm_ddt'] = df_temp['ddt'] / max_ddt
     df_temp = df_temp.set_index(['year', 'month', 'day'])
     
     df_calm = pd.read_csv(calm_file, parse_dates=['date'])

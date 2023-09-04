@@ -44,22 +44,42 @@ class LatLon:
         return closest_pixel_idx
 
 def compute_stats(alt_pred, alt_gt):
-    nan_mask = np.isnan(alt_pred)
-    print(f"number of nans: {nan_mask.sum()}/{len(alt_pred)}")
-    not_nan_mask = ~nan_mask
+    nan_mask_1 = np.isnan(alt_pred)
+    nan_mask_2 = np.isnan(alt_gt)
+    print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
+    print(f"number of nans GT: {nan_mask_2.sum()}/{len(alt_pred)}")
+    not_nan_mask = ~(nan_mask_1 | nan_mask_2)
     alt_pred = alt_pred[not_nan_mask]
     alt_gt = alt_gt[not_nan_mask]
     diff = np.array(alt_pred) - np.array(alt_gt)
     e = 0.079
-    psi_stat = np.square(diff/e)
-    psi_stat_mean = np.mean(psi_stat)
-    print("psi avg", psi_stat_mean)
-    mask_is_great = psi_stat < 1
-    frac_great_match = mask_is_great.mean() 
-    
     resalt_e = 2*e
+    psi_stat = np.square(diff/e)
+    mask_is_great = psi_stat < 1
     alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
     alt_within_uncertainty_mask &= ~mask_is_great # exclude ones that are great
+    print("FOR ENTIRE INPUT (excluding nans):")
+    _print_stats(alt_pred, alt_gt, diff, psi_stat, mask_is_great, alt_within_uncertainty_mask)
+
+    print("\nFOR INPUT EXCLUDING THE WORST 3 POINTS:")
+    indices = np.argsort(psi_stat)
+    _print_stats(
+        alt_pred[indices][:-3],
+        alt_gt[indices][:-3],
+        diff[indices][:-3],
+        psi_stat[indices][:-3],
+        mask_is_great[indices][:-3],
+        alt_within_uncertainty_mask[indices][:-3],
+        )
+
+def _print_stats(alt_pred, alt_gt, diff, psi_stat, mask_is_great, alt_within_uncertainty_mask):
+    print("avg, std ALT pred", np.mean(alt_pred), np.std(alt_pred))
+    print("avg, std ALT GT", np.mean(alt_gt), np.std(alt_gt))
+    
+    psi_stat_mean = np.mean(psi_stat)
+    print("psi avg", psi_stat_mean)
+    frac_great_match = mask_is_great.mean() 
+    
     frac_good_match = alt_within_uncertainty_mask.mean()
     
     frac_bad_match = 1.0 - frac_great_match - frac_good_match
