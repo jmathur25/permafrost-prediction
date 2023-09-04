@@ -194,15 +194,13 @@ def compute_phase_offset(
     return phase_diff
     
 # phase computed of alos1 - alos2, so  must be computed this way too
-incidence_angle = 38.7*np.pi/180
-wavelength = 0.2360571
 with open(alos_isce_outputs_dir / "PICKLE/interferogram", "rb") as fp:
     pickle_isce_obj = pickle.load(fp)
         
-radar_wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
+wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
 incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']
 
-print('radar wavelength', radar_wavelength)
+print('radar wavelength', wavelength)
 print('incidence angle', incidence_angle)
 
 phase_corr = compute_phase_offset(

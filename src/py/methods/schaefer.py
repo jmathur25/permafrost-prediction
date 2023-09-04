@@ -172,7 +172,10 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp):
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)
     radar_wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
-    incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']
+    incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle'] * np.pi/180
+
+    print("radar wavelength:", radar_wavelength)
+    print("incidence angle:", incidence_angle)
 
     point_to_pixel = []
     for (i, row) in tqdm.tqdm(df_calm_points.iterrows(), total=len(df_calm_points)):
