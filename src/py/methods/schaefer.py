@@ -64,7 +64,7 @@ def schaefer_method():
 
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp['site_code'])) == 1  # TODO: support codes
-    df_temp = df_temp[(df_temp['year'] >= 2006) & (df_temp['year'] <= 2010)]
+    df_temp = df_temp[(df_temp['year'] >= start_year) & (df_temp['year'] <= end_year)]
     df_temp = df_temp.sort_values(['year', 'month', 'day'])
     df_temps = []
     for (_, df_t) in df_temp.groupby(['year']):
@@ -88,12 +88,15 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby('point_id').mean()
     df_calm_points = df_calm.drop_duplicates(subset=['point_id'])
 
+    calib_alt = df_alt_gt.loc[calib_point_id]['alt_m']
+    calib_subsidence = alt_to_surface_deformation(calib_alt)
+
     # RHS and LHS per-pixel of eq. 2
     n = len(SCHAEFER_INTEFEROGRAMS)
     lhs_all = np.zeros((n, len(df_calm_points)))
     rhs_all = np.zeros((n, 2))
     for i, (scene1, scene2) in enumerate(SCHAEFER_INTEFEROGRAMS[:n]):
-        lhs, rhs, point_to_pixel = process_scene_pair(scene1, scene2, df_calm_points, calib_point_id, df_temp)
+        lhs, rhs, point_to_pixel = process_scene_pair(scene1, scene2, df_calm_points, calib_point_id, df_temp, calib_subsidence)
         lhs_all[i] = lhs
         rhs_all[i] = rhs
     
@@ -109,23 +112,28 @@ def schaefer_method():
     np.save("R", R)
     np.save("E", E)
     
-    calib_alt = df_alt_gt.loc[calib_point_id]['alt_m']
-    calib_subsidence = alt_to_surface_deformation(calib_alt)
-    E += -calib_subsidence
-    
+    E += calib_subsidence
+
     alt_pred = []
     for e, point in zip(E, point_to_pixel):
-        deformation = -e  # subsidence is negative, deformation is positive
-        if deformation < 0:
+        if e < 0:
             print(f"Skipping {point} due to neg deformation")
             alt_pred.append(np.nan)
             continue
-        alt = compute_alt_f_deformation(deformation)
+        alt = compute_alt_f_deformation(e)
         alt_pred.append(alt)
     
     alt_pred = np.array(alt_pred)
     alt_gt = df_alt_gt['alt_m'].values
     compute_stats(alt_pred, alt_gt)
+    
+    print("CHECKING SIMPLER PRED")
+    new_pred_def = lhs_all + calib_subsidence
+    assert new_pred_def.shape[0] == 1
+    new_pred_def = new_pred_def[0]
+    new_pred_alt = np.array([compute_alt_f_deformation(e) if e > 0 else np.nan for e in new_pred_def])
+    print("num nans", np.isnan(new_pred_alt).sum())
+    compute_stats(new_pred_alt, alt_gt)
     
     import code
     code.interact(local=locals())
@@ -153,7 +161,7 @@ def compute_ddt_ddf(df):
     df['ddt'] = ddt_list
     
 
-def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp):
+def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence):
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
     alos_d1 = get_date_for_alos(alos1)
     alos_d2 = get_date_for_alos(alos2)
@@ -194,10 +202,15 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp):
     igram_delta_def = compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, radar_wavelength)
 
     lhs = []
+    to_add = 0  #calib_subsidence if alos_d2 > alos_d1 else -calib_subsidence
+    n = 3
+    n_over_2 = n // 2
+    extra = n % 2
     for (_, y, x) in point_to_pixel:
         y -= bbox[0][0]
         x -= bbox[0][1]
-        lhs.append(igram_delta_def[y, x])
+        igram_slice = igram_delta_def[y - n_over_2:y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
+        lhs.append(igram_slice.mean() + to_add)
     return lhs, rhs, point_to_pixel
         
         
@@ -223,7 +236,7 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.show()
 
 def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id):
-    igram_unw_phase_slice = igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
+    igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
     row = point_to_pixel[point_to_pixel[:,0] == calib_point_id]
     assert row.shape == (1, 3)
     y = row[0, 1] - bbox[0][0]
