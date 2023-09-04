@@ -21,6 +21,7 @@ import sys
 import tqdm
 sys.path.append("..")
 
+from methods.schaefer import alt_to_surface_deformation, compute_alt_f_deformation, compute_bounding_box, plot_change
 from utils import load_img, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR
 from data.utils import get_date_for_alos
@@ -89,50 +90,6 @@ def get_alt_for_calib_point(calib_point_id, df):
 
     return row1.alt_m.values[0]
 
-def integrand(z):
-    po = 0.9
-    pf = 0.45
-    k = 1
-    return pf + (po - pf)*np.exp(-k*z)
-
-def alt_to_surface_deformation(alt):
-    # paper assumes exponential decay from 90% porosity to 45% porosity
-    # in general:
-    # P(z) = P_f + (Po - Pf)*e^(-kz)
-    # where P(f) = final porosity
-    #       P(o) = intial porosity
-    #       z is rate of exponential decay
-    # Without reading citation, let us assume k = 1
-    # Definite integral is now: https://www.wolframalpha.com/input?i=integrate+a+%2B+be%5E%28-kz%29+dz+from+0+to+x
-    po = 0.9
-    pf = 0.45
-    k = 1
-    # integral = (po * k *  alt + (pf - po) * (-np.exp(-k*alt)) + (pf - po))/k
-    pw = 0.997 # g/m^3
-    pi = 0.9168 # g/cm^3
-    integral, error = quad(integrand, 0, alt)
-    print("integral error", error)
-    return (pw - pi) / pi * integral
-
-from scipy.integrate import quad
-from scipy.optimize import root_scalar
-def compute_alt_f_deformation(deformation):
-    po = 0.9
-    pf = 0.45
-    k = 1
-    pw = 0.997 # g/m^3
-    pi = 0.9168 # g/cm^3
-    integral_val = deformation * (pi / (pw - pi))
-    
-    # Define the function to find its root
-    def objective(x, target):
-        integral, _ = quad(integrand, 0, x)
-        return integral - target
-
-    result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method='brentq')
-    assert result.converged
-    return result.root
-
 def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     alt1 = get_alt_for_calib_point(point_id, df_calm_d1)
     alt2 = get_alt_for_calib_point(point_id, df_calm_d2)
@@ -143,7 +100,6 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     return def1 - def2
 
     
-
 calib_def_12 = compute_deformation_for_point(calib_point_id, df_calm_d1, df_calm_d2)
 
 alt1 = get_alt_for_calib_point(calib_point_id, df_calm_d1)
@@ -191,21 +147,6 @@ for (i, row) in tqdm.tqdm(df_calm_points.iterrows(), total=len(df_calm_points)):
     point_to_pixel.append([point, px_y, px_x])
 point_to_pixel = np.array(point_to_pixel)
     
-def compute_bounding_box(pixels, n=10):
-    # Initialize min and max coordinates for y and x
-    min_y = np.min(pixels[:,0])
-    min_x = np.min(pixels[:,1])
-    max_y = np.max(pixels[:,0])
-    max_x = np.max(pixels[:,1])
-
-    # Add 50-pixel margin to each side
-    min_y = max(min_y - n, 0)
-    min_x = max(min_x - n, 0)
-    max_y += n
-    max_x += n
-    
-    return ((min_y, min_x), (max_y, max_x))
-
 bbox = compute_bounding_box(point_to_pixel[:,[1,2]])
 print(bbox)
 
@@ -255,9 +196,19 @@ def compute_phase_offset(
 # phase computed of alos1 - alos2, so  must be computed this way too
 incidence_angle = 38.7*np.pi/180
 wavelength = 0.2360571
+with open(alos_isce_outputs_dir / "PICKLE/interferogram", "rb") as fp:
+    pickle_isce_obj = pickle.load(fp)
+        
+radar_wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
+incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']
+
+print('radar wavelength', radar_wavelength)
+print('incidence angle', incidence_angle)
+
 phase_corr = compute_phase_offset(
     point_to_pixel, bbox, calib_point_id, calib_def_12, igram_unw_phase_slice, incidence_angle, wavelength)
 
+print("phase correction", phase_corr)
 igram_unw_phase_slice_corr = igram_unw_phase_slice + phase_corr
 
 # %%
@@ -269,25 +220,7 @@ def compute_deformation(igram_unw_phase_slice_corr, bbox, incidence_angle, wavel
 igram_def = compute_deformation(igram_unw_phase_slice_corr, bbox, incidence_angle, wavelength)
 
 # %%
-# Plot deformations
-def plot_change(img, point_to_pixel, label):
-    plt.imshow(img, cmap='viridis', origin='lower')
-
-    # Add red boxes
-    for point in point_to_pixel:
-        point_id, y, x = point
-        y -= bbox[0][0]
-        x -= bbox[0][1]
-        plt.gca().add_patch(plt.Rectangle((x - 1.5, y - 1.5), 3, 3, fill=None, edgecolor='red', linewidth=2))
-        
-        # Annotate each box with the point #
-        plt.annotate(f"#{point_id}", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=5, color='white')
-
-    plt.colorbar()
-    plt.title(label)
-    plt.show()
-    
-plot_change(igram_def, point_to_pixel, "Predicted Deformations")
+plot_change(igram_def, bbox, point_to_pixel, "Predicted Deformations")
 
 # %%
 deformations = []
@@ -316,16 +249,6 @@ def get_predicted_deformations(igram_def, bbox, point_to_pixel, n=2):
 predicted_deformations = get_predicted_deformations(igram_def, bbox, point_to_pixel)
 
 # %%
-r2 = r2_score(deformations, predicted_deformations)
-print(f"R^2 score: {r2}")
-
-pearson_corr, _ = pearsonr(predicted_deformations, deformations)
-print(f"Pearson R: {pearson_corr}")
-
-rmse = np.sqrt(mean_squared_error(deformations, predicted_deformations))
-print(f"RMSE: {rmse}")
-
-# %%
 def construct_image(bbox, point_to_pixel, values, n=3):
     dy = bbox[1][0] - bbox[0][0]
     dx = bbox[1][1] - bbox[0][1]
@@ -343,7 +266,7 @@ def construct_image(bbox, point_to_pixel, values, n=3):
     return image
 
 gt_def = construct_image(bbox, point_to_pixel, deformations)
-plot_change(gt_def, point_to_pixel, "Ground-Truth Deformations")
+plot_change(gt_def, bbox, point_to_pixel, "Ground-Truth Deformations")
 
 # %%
 dy = bbox[1][0] - bbox[0][0]
@@ -370,7 +293,7 @@ for point, def_pred in zip(point_to_pixel[:,0], predicted_deformations):
     alt_predictions.append(alt)
 
 # %%
-plot_change(alt_predictions_img, point_to_pixel, "ALT predictions")
+plot_change(alt_predictions_img, bbox, point_to_pixel, "ALT predictions")
 # %%
 gt_alt = []
 for point in point_to_pixel[:,0]:
@@ -385,7 +308,7 @@ for point in point_to_pixel[:,0]:
     gt_alt.append(alt)
 
 gt_alt_img = construct_image(bbox, point_to_pixel, gt_alt)
-plot_change(gt_alt_img, point_to_pixel, "Ground-Truth ALT")
+plot_change(gt_alt_img, bbox, point_to_pixel, "Ground-Truth ALT")
 
 # %%
 def compute_stats(alt_pred, alt_gt):
@@ -416,6 +339,16 @@ def compute_stats(alt_pred, alt_gt):
     bias = diff.mean()
     print("Bias", bias)
     
+    r2 = r2_score(alt_pred, alt_gt)
+    print(f"R^2 score: {r2}")
+
+    pearson_corr, _ = pearsonr(alt_pred, alt_gt)
+    print(f"Pearson R: {pearson_corr}")
+
+    rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
+    print(f"RMSE: {rmse}")
+    
 compute_stats(alt_predictions, gt_alt)
 
 # %%
+ 

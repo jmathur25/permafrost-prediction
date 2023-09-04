@@ -9,9 +9,9 @@ import pandas as pd
 import requests
 import code
 
-from consts import CALM_DOWNLOAD_URL, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
-from sar import alos_palsar_granule
-from utils import prompt_user
+from data.consts import CALM_DOWNLOAD_URL, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
+from data.sar import alos_palsar_granule
+from data.utils import prompt_user
 
 
 class StandardDataFormatColumns(enum.Enum):
