@@ -95,18 +95,21 @@ def schaefer_method():
     # calib_subsidence = 0.012991343843446251
 
     # RHS and LHS per-pixel of eq. 2
+    si = SCHAEFER_INTEFEROGRAMS # [("ALPSRP182312170", "ALPSRP189022170")] # SCHAEFER_INTEFEROGRAMS[5:6]
     n = len(SCHAEFER_INTEFEROGRAMS)
     lhs_all = np.zeros((n, len(df_calm_points)))
     rhs_all = np.zeros((n, 2))
-    for i, (scene1, scene2) in enumerate(SCHAEFER_INTEFEROGRAMS[:n]):
+    for i, (scene1, scene2) in enumerate(si[:n]):
         lhs, rhs, point_to_pixel = process_scene_pair(scene1, scene2, df_calm_points, calib_point_id, df_temp, calib_subsidence)
         lhs_all[i] = lhs
         rhs_all[i] = rhs
     
     print("Solving equations")
-    # rhs_all = rhs_all[:, 1:2]
+    rhs_all2 = rhs_all[:, 1:2]
     rhs_pi = np.linalg.pinv(rhs_all)
+    rhs_pi2 = np.linalg.pinv(rhs_all2)
     sol = rhs_pi @ lhs_all
+    sol2 = rhs_pi2 @ lhs_all
     
     R = sol[0, :]
     E = sol[1, :]
@@ -115,23 +118,26 @@ def schaefer_method():
     np.save("R", R)
     np.save("E", E)
     
-    E += calib_subsidence
+    for E_sol, m in zip([E, sol2[0]], ["R and E", "just E"]):
+        print(f"----\nAnalyzing method {m}\n----")
+        
+        E_sol = E_sol + calib_subsidence
 
-    alt_pred = []
-    # TODO: point to pixel needs to be represented better. 
-    # we are assuming `process_scene_pair` keeps them
-    # in the same order.
-    for e, point in zip(E, point_to_pixel):
-        if e < 0:
-            print(f"Skipping {point} due to neg deformation")
-            alt_pred.append(np.nan)
-            continue
-        alt = compute_alt_f_deformation(e)
-        alt_pred.append(alt)
-    
-    alt_pred = np.array(alt_pred)
-    alt_gt = df_alt_gt['alt_m'].values
-    compute_stats(alt_pred, alt_gt)
+        alt_pred = []
+        # TODO: point to pixel needs to be represented better. 
+        # we are assuming `process_scene_pair` keeps them
+        # in the same order.
+        for e, point in zip(E_sol, point_to_pixel):
+            if e < 0:
+                print(f"Skipping {point} due to neg deformation")
+                alt_pred.append(np.nan)
+                continue
+            alt = compute_alt_f_deformation(e)
+            alt_pred.append(alt)
+        
+        alt_pred = np.array(alt_pred)
+        alt_gt = df_alt_gt['alt_m'].values
+        compute_stats(alt_pred, alt_gt)
     
     # print("CHECKING SIMPLER PRED")
     # new_pred_def = lhs_all + calib_subsidence
@@ -168,7 +174,7 @@ def compute_ddt_ddf(df):
     
 
 def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence):
-    n = 3 # spatial avg procedures use a 3x3 window
+    n = 1 # spatial avg procedures use a 3x3 window
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
     alos_d1 = get_date_for_alos(alos1)
     alos_d2 = get_date_for_alos(alos2)
@@ -213,7 +219,7 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     bbox = compute_bounding_box(point_to_pixel[:,[1,2]])
     print(f"Bounding box set to: {bbox}")
     
-    igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=3)
+    igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=n)
     igram_delta_def = compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, radar_wavelength)
 
     lhs = []
@@ -253,7 +259,7 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.title(label)
     plt.show()
 
-def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=3):
+def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n):
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
     row = point_to_pixel[point_to_pixel[:,0] == calib_point_id]
     assert row.shape == (1, 3)
