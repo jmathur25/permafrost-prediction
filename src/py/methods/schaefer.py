@@ -294,7 +294,10 @@ def compute_bounding_box(pixels, n=10):
 def resalt_integrand(z):
     po = 0.9
     pf = 0.45
-    k = 1
+    # Chosen to make the VWC ~0.7 for an ALT of 0.36 cm
+    # because paper reported this general average and this ALT average
+    # for CALM
+    k = 4
     return pf + (po - pf)*np.exp(-k*z)
 
 
@@ -307,13 +310,10 @@ def alt_to_surface_deformation(alt):
     #       z is rate of exponential decay
     # Without reading citation, let us assume k = 1
     # Definite integral is now: https://www.wolframalpha.com/input?i=integrate+a+%2B+be%5E%28-kz%29+dz+from+0+to+x
-    po = 0.9
-    pf = 0.45
-    k = 1
-    # integral = (po * k *  alt + (pf - po) * (-np.exp(-k*alt)) + (pf - po))/k
     pw = 0.997 # g/m^3
     pi = 0.9168 # g/cm^3
     integral, error = quad(resalt_integrand, 0, alt)
+    print("INTEGRAL/ALT", integral/alt)
     assert error < 1e-5
     return (pw - pi) / pi * integral
 

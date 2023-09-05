@@ -118,6 +118,9 @@ alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
 
 print(f"Estimated ground deformation at calibration point {calib_point_id}: {np.round(calib_def_12, decimals=3)} m")
 
+sd = alt_to_surface_deformation(0.36)
+print("FOR ALT OF 0.36, GOT DEF", sd)
+
 # %%
 intfg_unw_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.unw'
 intfg_unw_conncomp_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.unw.conncomp'
