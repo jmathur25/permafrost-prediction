@@ -1,3 +1,4 @@
+import code
 import pickle
 import click
 from isce2.components import isceobj
@@ -69,16 +70,17 @@ def schaefer_method():
     df_temps = []
     for (_, df_t) in df_temp.groupby(['year']):
         compute_ddt_ddf(df_t)
-        df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
+        # df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
-    # max_ddt = df_temp['ddt'].max()
-    # df_temp['norm_ddt'] = df_temp['ddt'] / max_ddt
+    max_ddt = df_temp['ddt'].max()
+    df_temp['norm_ddt'] = df_temp['ddt'] / max_ddt
     df_temp = df_temp.set_index(['year', 'month', 'day'])
     
     df_calm = pd.read_csv(calm_file, parse_dates=['date'])
+    df_calm = df_calm.sort_values('date', ascending=True)
     df_calm = df_calm[df_calm['point_id'].apply(lambda x: x not in ignore_point_ids)]
-    df_calm = df_calm[(df_calm['date'] >= pd.to_datetime("2006")) & (df_calm['date'] <= pd.to_datetime("2010"))]
+    df_calm = df_calm[(df_calm['date'] >= pd.to_datetime("1995")) & (df_calm['date'] < pd.to_datetime("2014"))]
     def try_float(x):
         try:
             return float(x)
@@ -86,21 +88,23 @@ def schaefer_method():
             return np.nan
     # TODO: fix in processor. handle 'w'?
     df_calm['alt_m'] = df_calm['alt_m'].apply(try_float) / 100
-    df_peak_alt = df_calm[df_calm['date'].dt.month.isin([8, 9])]
+    # only grab ALTs from end of summer, which willl be the last
+    # measurement in a year
+    df_calm['year'] = df_calm['date'].dt.year
+    df_peak_alt = df_calm.groupby(['point_id', 'year']).last()
     df_alt_gt = df_peak_alt.groupby('point_id').mean()
-    df_calm_points = df_calm.drop_duplicates(subset=['point_id'])
+    df_alt_gt = df_alt_gt.drop('date', axis=1)
 
     calib_alt = df_alt_gt.loc[calib_point_id]['alt_m']
     calib_subsidence = alt_to_surface_deformation(calib_alt)
-    # calib_subsidence = 0.012991343843446251
 
     # RHS and LHS per-pixel of eq. 2
-    si = SCHAEFER_INTEFEROGRAMS # [("ALPSRP182312170", "ALPSRP189022170")] # SCHAEFER_INTEFEROGRAMS[5:6]
-    n = len(SCHAEFER_INTEFEROGRAMS)
-    lhs_all = np.zeros((n, len(df_calm_points)))
+    si = SCHAEFER_INTEFEROGRAMS # SCHAEFER_INTEFEROGRAMS[0:1]
+    n = len(si)
+    lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
-    for i, (scene1, scene2) in enumerate(si[:n]):
-        lhs, rhs, point_to_pixel = process_scene_pair(scene1, scene2, df_calm_points, calib_point_id, df_temp, calib_subsidence)
+    for i, (scene1, scene2) in enumerate(si):
+        lhs, rhs, point_to_pixel = process_scene_pair(scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence)
         lhs_all[i] = lhs
         rhs_all[i] = rhs
     
@@ -122,12 +126,15 @@ def schaefer_method():
         print(f"----\nAnalyzing method {m}\n----")
         
         E_sol = E_sol + calib_subsidence
+        
+        df_maxes = df_temp.groupby('year').max()
+        D_avg = E_sol * np.mean(np.sqrt(df_maxes['norm_ddt'].values))
 
         alt_pred = []
         # TODO: point to pixel needs to be represented better. 
         # we are assuming `process_scene_pair` keeps them
         # in the same order.
-        for e, point in zip(E_sol, point_to_pixel):
+        for e, point in zip(D_avg, point_to_pixel):
             if e < 0:
                 print(f"Skipping {point} due to neg deformation")
                 alt_pred.append(np.nan)
@@ -138,6 +145,8 @@ def schaefer_method():
         alt_pred = np.array(alt_pred)
         alt_gt = df_alt_gt['alt_m'].values
         compute_stats(alt_pred, alt_gt)
+
+        code.interact(local=locals())
     
     # print("CHECKING SIMPLER PRED")
     # new_pred_def = lhs_all + calib_subsidence
@@ -147,7 +156,6 @@ def schaefer_method():
     # print("num nans", np.isnan(new_pred_alt).sum())
     # compute_stats(new_pred_alt, alt_gt)
     
-    import code
     code.interact(local=locals())
 
 def compute_ddt_ddf(df):
@@ -197,6 +205,12 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     intfg_unw_file = isce_output_dir / 'interferogram/filt_topophase.unw'
     ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
     igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
+    # print("USING WRAPPED PHASE")
+    # intfg_unw_file = isce_output_dir / 'interferogram/filt_topophase.flat'
+    # ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
+    # igram = ds.GetRasterBand(1).ReadAsArray()
+    # print("IGRAM", igram)
+    # igram_unw_phase = np.angle(igram)
     lat_lon = LatLon(isce_output_dir)
     
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
@@ -208,8 +222,7 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     print("incidence angle:", incidence_angle)
 
     point_to_pixel = []
-    for (i, row) in tqdm.tqdm(df_calm_points.iterrows(), total=len(df_calm_points)):
-        point = row['point_id']
+    for (point, row) in tqdm.tqdm(df_calm_points.iterrows(), total=len(df_calm_points)):
         lat = row['latitude']
         lon = row['longitude']
         y, x = lat_lon.find_closest_pixel(lat, lon)
@@ -294,10 +307,10 @@ def compute_bounding_box(pixels, n=10):
 def resalt_integrand(z):
     po = 0.9
     pf = 0.45
-    # Chosen to make the VWC ~0.7 for an ALT of 0.36 cm
+    # Chosen to make the VWC ~0.62 for an ALT of 0.36 cm (see Table 2)
     # because paper reported this general average and this ALT average
-    # for CALM
-    k = 4
+    # for CALM. Also the paper they cite [21?] has k=5.5
+    k = 5.5
     return pf + (po - pf)*np.exp(-k*z)
 
 
