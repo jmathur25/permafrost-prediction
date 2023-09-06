@@ -12,6 +12,7 @@ from methods.utils import compute_stats, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP021272170", "ALPSRP027982170"),
@@ -111,12 +112,28 @@ def schaefer_method():
     n = len(si)
     lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
-    for i, (scene1, scene2) in enumerate(si):
-        lhs, rhs, point_to_pixel = process_scene_pair(
-            scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
-        )
-        lhs_all[i] = lhs
-        rhs_all[i, :] = rhs
+    # for i, (scene1, scene2) in enumerate(si):
+    #     lhs, rhs = process_scene_pair(
+    #         scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+    #     )
+    #     lhs_all[i] = lhs
+    #     rhs_all[i, :] = rhs
+    with ThreadPoolExecutor() as executor:
+        pbar = tqdm.tqdm(total=n)
+        futures = []
+        for i, scene_pair in enumerate(si):
+            futures.append(
+                executor.submit(
+                    worker, i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+                )
+            )
+
+        for future in as_completed(futures):
+            pbar.update(1)
+            i, lhs, rhs = future.result()
+            lhs_all[i] = lhs
+            rhs_all[i, :] = rhs
+        pbar.close()
 
     print("Solving equations")
     rhs_pi = np.linalg.pinv(rhs_all)
@@ -137,7 +154,7 @@ def schaefer_method():
     # TODO: point to pixel needs to be represented better.
     # we are assuming `process_scene_pair` keeps them
     # in the same order.
-    for e, point in zip(E, point_to_pixel):
+    for e, point in zip(E, df_alt_gt.index):
         if e < 1e-3:
             print(f"Skipping {point} due to non-positive deformation")
             alt_pred.append(np.nan)
@@ -148,6 +165,14 @@ def schaefer_method():
     alt_pred = np.array(alt_pred)
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)
+
+
+def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
+    scene1, scene2 = scene_pair
+    lhs, rhs = process_scene_pair(
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+    )
+    return i, lhs, rhs
 
 
 def compute_ddt_ddf(df):
@@ -241,7 +266,7 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
         x -= bbox[0][1]
         igram_slice = igram_def[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
         lhs.append(igram_slice.mean())
-    return lhs, rhs, point_to_pixel
+    return lhs, rhs
 
 
 def get_norm_ddt(df_temp, date):
