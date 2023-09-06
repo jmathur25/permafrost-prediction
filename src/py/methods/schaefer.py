@@ -50,7 +50,9 @@ def schaefer_method():
     calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
-    ignore_point_ids = [7, 21, 43, 55, 110, 121]
+    paper_specified_ignore = [7, 110, 121]
+    data_specified_ignore = [21, 43, 55]
+    ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
     end_year = 2010
@@ -61,7 +63,7 @@ def schaefer_method():
     # final correction is applied after tje
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
-    correct_E_per_igram = True
+    correct_E_per_igram = False
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -169,7 +171,7 @@ def schaefer_method():
 
     alt_pred = np.array(alt_pred)
     alt_gt = df_alt_gt["alt_m"].values
-    compute_stats(alt_pred, alt_gt)
+    compute_stats(alt_pred, alt_gt, df_alt_gt.index)
 
 
 def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):

@@ -54,7 +54,7 @@ class LatLon:
         return closest_pixel_idx
 
 
-def compute_stats(alt_pred, alt_gt):
+def compute_stats(alt_pred, alt_gt, points):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
@@ -73,8 +73,8 @@ def compute_stats(alt_pred, alt_gt):
     print("FOR ENTIRE INPUT (excluding nans):")
     _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask)
 
-    print("\nFOR INPUT EXCLUDING THE WORST 3 POINTS:")
     indices = np.argsort(chi_stat)
+    print(f"\nFOR INPUT EXCLUDING THE WORST 3 POINTS: {points[indices[-3:]]}")
     _print_stats(
         alt_pred[indices][:-3],
         alt_gt[indices][:-3],
