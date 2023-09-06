@@ -55,28 +55,12 @@ def schaefer_method():
     end_year = 2010
 
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
-    norm_per_year = False
+    norm_per_year = True
     # If False, matrix solves a delta deformation problem with respect to calibration point. A
     # final correction is applied after tje
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
-
-    df_temp = pd.read_csv(temp_file)
-    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
-    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] < end_year + 1)]
-    df_temp = df_temp.sort_values(["year", "month", "day"])
-    df_temps = []
-    for _, df_t in df_temp.groupby(["year"]):
-        compute_ddt_ddf(df_t)
-        if norm_per_year:
-            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
-        df_temps.append(df_t)
-    df_temp = pd.concat(df_temps, verify_integrity=True)
-    if not norm_per_year:
-        max_ddt = df_temp["ddt"].max()
-        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
-    df_temp = df_temp.set_index(["year", "month", "day"])
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -97,6 +81,24 @@ def schaefer_method():
     df_peak_alt = df_calm.groupby(["point_id", "year"]).last()
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
     df_alt_gt = df_alt_gt.drop("date", axis=1)
+
+    df_temp = pd.read_csv(temp_file)
+    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] < end_year + 1)]
+    df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
+    df_temps = []
+    for year, df_t in df_temp.groupby("year"):
+        compute_ddt_ddf(df_t)
+        if norm_per_year:
+            # df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
+            date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+            end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
+            df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
+        df_temps.append(df_t)
+    df_temp = pd.concat(df_temps, verify_integrity=True)
+    if not norm_per_year:
+        max_ddt = df_temp["ddt"].max()
+        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     calib_subsidence = alt_to_surface_deformation(calib_alt)
@@ -206,7 +208,7 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     print("incidence angle:", incidence_angle)
 
     point_to_pixel = []
-    for point, row in tqdm.tqdm(df_calm_points.iterrows(), total=len(df_calm_points)):
+    for point, row in df_calm_points.iterrows():
         lat = row["latitude"]
         lon = row["longitude"]
         y, x = lat_lon.find_closest_pixel(lat, lon)

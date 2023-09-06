@@ -4,6 +4,7 @@ import numpy as np
 import gdal
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
+from scipy.spatial import KDTree
 
 
 # from DownsampleUnwrapper
@@ -44,9 +45,12 @@ class LatLon:
         print("HORIZ RES (m)", horiz_dist / lat.shape[1] * 1000)
         print("VERT RES (m)", vert_dist / lat.shape[0] * 1000)
 
+        self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
+        self.kd_tree = KDTree(self.flattened_coordinates)
+
     def find_closest_pixel(self, lat, lon):
-        distances = np.sqrt((self.lat_arr - lat) ** 2 + (self.lon_arr - lon) ** 2)
-        closest_pixel_idx = np.unravel_index(np.argmin(distances, axis=None), distances.shape)
+        _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
         return closest_pixel_idx
 
 
