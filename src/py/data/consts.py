@@ -1,5 +1,3 @@
-
-
 import pathlib
 
 _CURRENT_DIR = pathlib.Path(__file__).parent

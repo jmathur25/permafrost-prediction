@@ -56,7 +56,7 @@ def schaefer_method():
     calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
-    ignore_point_ids = [7, 110, 121]
+    ignore_point_ids = [7, 21, 43, 55, 110, 121]
     calib_point_id = 61
     start_year = 2006
     end_year = 2010
@@ -68,7 +68,7 @@ def schaefer_method():
     df_temps = []
     for _, df_t in df_temp.groupby(["year"]):
         compute_ddt_ddf(df_t)
-        # df_t['norm_ddt'] = df_t['ddt'] / df_t['ddt'].values[-1]
+        # df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
     max_ddt = df_temp["ddt"].max()
@@ -95,8 +95,9 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
     df_alt_gt = df_alt_gt.drop("date", axis=1)
 
-    calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    calib_subsidence = alt_to_surface_deformation(calib_alt)
+    print("OVERRIDING SUB")
+    # calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
+    calib_subsidence = 0.0202  # alt_to_surface_deformation(calib_alt)
 
     # RHS and LHS per-pixel of eq. 2
     si = SCHAEFER_INTEFEROGRAMS  # SCHAEFER_INTEFEROGRAMS[0:1]
@@ -127,20 +128,17 @@ def schaefer_method():
     for E_sol, m in zip([E, sol2[0]], ["R and E", "just E"]):
         print(f"----\nAnalyzing method {m}\n----")
 
-        # E_sol = E_sol + calib_subsidence
-        print("OVERRIDING SUB")
-        E_sol = E_sol + 0.0202
-
         df_maxes = df_temp.groupby("year").max()
         D_avg = E_sol * np.mean(np.sqrt(df_maxes["norm_ddt"].values))
+        D_avg += calib_subsidence
 
         alt_pred = []
         # TODO: point to pixel needs to be represented better.
         # we are assuming `process_scene_pair` keeps them
         # in the same order.
         for e, point in zip(D_avg, point_to_pixel):
-            if e < 0:
-                print(f"Skipping {point} due to neg deformation")
+            if e < 1e-3:
+                print(f"Skipping {point} due to non-positive deformation")
                 alt_pred.append(np.nan)
                 continue
             alt = compute_alt_f_deformation(e)
@@ -194,13 +192,6 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     print("NORM DT AFTER", norm_ddt_d2)
     norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
     print("NORM DT BEFORE", norm_ddt_d1)
-    # ddt_d2 = get_ddt(df_temp, alos_d2)
-    # ddt_d1 = get_ddt(df_temp, alos_d1)
-    # larger = max(ddt_d2, ddt_d1)
-    # print("OVERRIDING DDT")
-    # norm_ddt_d2 = ddt_d2 / larger
-    # norm_ddt_d1 = ddt_d1 / larger
-    # print("NORM DTs", norm_ddt_d1, norm_ddt_d2)
     sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
@@ -235,7 +226,15 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     print(f"Bounding box set to: {bbox}")
 
     igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=n)
-    igram_delta_def = compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, radar_wavelength)
+    igram_delta_def = compute_delta_deformation(
+        igram_unw_delta_phase_slice,
+        bbox,
+        incidence_angle,
+        radar_wavelength,
+        point_to_pixel,
+        calib_point_id,
+        calib_subsidence,
+    )
 
     lhs = []
     to_add = 0  # calib_subsidence if alos_d2 > alos_d1 else -calib_subsidence
@@ -289,11 +288,19 @@ def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point
     return igram_unw_phase_slice - calib_phase_slice.mean()
 
 
-def compute_delta_deformation(igram_unw_delta_phase_slice, bbox, incidence_angle, wavelength):
+def compute_delta_deformation(
+    igram_unw_delta_phase_slice, bbox, incidence_angle, wavelength, point_to_pixel, calib_point_id, calib_def
+):
     # TODO: incident angle per pixel
-    los_def = igram_unw_delta_phase_slice / (2 * np.pi) * wavelength
+    los_def = igram_unw_delta_phase_slice / (2 * 2 * np.pi) * wavelength
     ground_def = los_def / np.cos(incidence_angle)
-    return ground_def
+    row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
+    assert row.shape == (1, 3)
+    y = row[0, 1] - bbox[0][0]
+    x = row[0, 2] - bbox[0][1]
+    # diff = ground_def[y, x] - calib_def
+    # print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
+    return ground_def  # - diff
 
 
 def compute_bounding_box(pixels, n=10):
