@@ -1,24 +1,17 @@
-import code
 import pickle
 import click
-from isce2.components import isceobj
 import numpy as np
 import matplotlib.pyplot as plt
-import pathlib
-from sklearn.metrics import mean_squared_error, r2_score
-from scipy.stats import pearsonr
-
-from scipy.integrate import quad
-from scipy.optimize import root_scalar
 
 import gdal
 
 import pandas as pd
 
 import tqdm
-from methods.utils import compute_stats, load_img, LatLon
+from methods.utils import compute_stats, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
+from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
 
 SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP021272170", "ALPSRP027982170"),
@@ -61,6 +54,14 @@ def schaefer_method():
     start_year = 2006
     end_year = 2010
 
+    # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
+    norm_per_year = False
+    # If False, matrix solves a delta deformation problem with respect to calibration point. A
+    # final correction is applied after tje
+    # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
+    # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
+    correct_E_per_igram = False
+
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
     df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] < end_year + 1)]
@@ -68,11 +69,13 @@ def schaefer_method():
     df_temps = []
     for _, df_t in df_temp.groupby(["year"]):
         compute_ddt_ddf(df_t)
-        # df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
+        if norm_per_year:
+            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
-    max_ddt = df_temp["ddt"].max()
-    df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    if not norm_per_year:
+        max_ddt = df_temp["ddt"].max()
+        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
     df_temp = df_temp.set_index(["year", "month", "day"])
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
@@ -95,9 +98,11 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
     df_alt_gt = df_alt_gt.drop("date", axis=1)
 
-    print("OVERRIDING SUB")
-    # calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    calib_subsidence = 0.0202  # alt_to_surface_deformation(calib_alt)
+    calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
+    calib_subsidence = alt_to_surface_deformation(calib_alt)
+    # print("OVERRIDING SUB")
+    # calib_subsidence = alt_to_surface_deformation(calib_alt)
+    print("CALIBRATION SUBSIDENCE:", calib_subsidence)
 
     # RHS and LHS per-pixel of eq. 2
     si = SCHAEFER_INTEFEROGRAMS  # SCHAEFER_INTEFEROGRAMS[0:1]
@@ -106,55 +111,41 @@ def schaefer_method():
     rhs_all = np.zeros((n, 2))
     for i, (scene1, scene2) in enumerate(si):
         lhs, rhs, point_to_pixel = process_scene_pair(
-            scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence
+            scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
         )
         lhs_all[i] = lhs
-        rhs_all[i] = rhs
+        rhs_all[i, :] = rhs
 
     print("Solving equations")
-    rhs_all2 = rhs_all[:, 1:2]
     rhs_pi = np.linalg.pinv(rhs_all)
-    rhs_pi2 = np.linalg.pinv(rhs_all2)
     sol = rhs_pi @ lhs_all
-    sol2 = rhs_pi2 @ lhs_all
 
     R = sol[0, :]
     E = sol[1, :]
-    # E = sol[0, :]
 
     np.save("R", R)
     np.save("E", E)
 
-    for E_sol, m in zip([E, sol2[0]], ["R and E", "just E"]):
-        print(f"----\nAnalyzing method {m}\n----")
+    if not correct_E_per_igram:
+        E = E + calib_subsidence
+        # df_maxes = df_temp.groupby("year").max()
+        # E_sol = E_sol * np.mean(np.sqrt(df_maxes["norm_ddt"].values))
 
-        df_maxes = df_temp.groupby("year").max()
-        D_avg = E_sol * np.mean(np.sqrt(df_maxes["norm_ddt"].values))
-        D_avg += calib_subsidence
+    alt_pred = []
+    # TODO: point to pixel needs to be represented better.
+    # we are assuming `process_scene_pair` keeps them
+    # in the same order.
+    for e, point in zip(E, point_to_pixel):
+        if e < 1e-3:
+            print(f"Skipping {point} due to non-positive deformation")
+            alt_pred.append(np.nan)
+            continue
+        alt = compute_alt_f_deformation(e)
+        alt_pred.append(alt)
 
-        alt_pred = []
-        # TODO: point to pixel needs to be represented better.
-        # we are assuming `process_scene_pair` keeps them
-        # in the same order.
-        for e, point in zip(D_avg, point_to_pixel):
-            if e < 1e-3:
-                print(f"Skipping {point} due to non-positive deformation")
-                alt_pred.append(np.nan)
-                continue
-            alt = compute_alt_f_deformation(e)
-            alt_pred.append(alt)
-
-        alt_pred = np.array(alt_pred)
-        alt_gt = df_alt_gt["alt_m"].values
-        compute_stats(alt_pred, alt_gt)
-
-    # print("CHECKING SIMPLER PRED")
-    # new_pred_def = lhs_all + calib_subsidence
-    # assert new_pred_def.shape[0] == 1
-    # new_pred_def = new_pred_def[0]
-    # new_pred_alt = np.array([compute_alt_f_deformation(e) if e > 0 else np.nan for e in new_pred_def])
-    # print("num nans", np.isnan(new_pred_alt).sum())
-    # compute_stats(new_pred_alt, alt_gt)
+    alt_pred = np.array(alt_pred)
+    alt_gt = df_alt_gt["alt_m"].values
+    compute_stats(alt_pred, alt_gt)
 
 
 def compute_ddt_ddf(df):
@@ -180,7 +171,7 @@ def compute_ddt_ddf(df):
     df["ddt"] = ddt_list
 
 
-def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence):
+def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
     n = 1
     print(f"SPATIAL AVG n={n}")
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
@@ -225,26 +216,29 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
     print(f"Bounding box set to: {bbox}")
 
-    igram_unw_delta_phase_slice = compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n=n)
-    igram_delta_def = compute_delta_deformation(
-        igram_unw_delta_phase_slice,
+    igram_unw_phase_slice = compute_phase_slice(
+        igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n=n
+    )
+    scaled_calib_def = calib_subsidence * sqrt_addt_diff
+    igram_def = compute_deformation(
+        igram_unw_phase_slice,
         bbox,
         incidence_angle,
         radar_wavelength,
         point_to_pixel,
         calib_point_id,
-        calib_subsidence,
+        scaled_calib_def,
+        correct_E_per_igram,
     )
 
     lhs = []
-    to_add = 0  # calib_subsidence if alos_d2 > alos_d1 else -calib_subsidence
     n_over_2 = n // 2
     extra = n % 2
     for _, y, x in point_to_pixel:
         y -= bbox[0][0]
         x -= bbox[0][1]
-        igram_slice = igram_delta_def[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
-        lhs.append(igram_slice.mean() + to_add)
+        igram_slice = igram_def[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
+        lhs.append(igram_slice.mean())
     return lhs, rhs, point_to_pixel
 
 
@@ -276,20 +270,32 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.show()
 
 
-def compute_delta_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n):
+def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n):
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
-    row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
-    assert row.shape == (1, 3)
-    y = row[0, 1] - bbox[0][0]
-    x = row[0, 2] - bbox[0][1]
-    n_over_2 = n // 2
-    extra = n % 2
-    calib_phase_slice = igram_unw_phase_slice[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
-    return igram_unw_phase_slice - calib_phase_slice.mean()
+    if not correct_E_per_igram:
+        # Use phase-differences wrt to reference pixel
+        row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
+        assert row.shape == (1, 3)
+        y = row[0, 1] - bbox[0][0]
+        x = row[0, 2] - bbox[0][1]
+        n_over_2 = n // 2
+        extra = n % 2
+        calib_phase_slice = igram_unw_phase_slice[
+            y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra
+        ]
+        igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
+    return igram_unw_phase_slice
 
 
-def compute_delta_deformation(
-    igram_unw_delta_phase_slice, bbox, incidence_angle, wavelength, point_to_pixel, calib_point_id, calib_def
+def compute_deformation(
+    igram_unw_delta_phase_slice,
+    bbox,
+    incidence_angle,
+    wavelength,
+    point_to_pixel,
+    calib_point_id,
+    calib_def,
+    correct_E_per_igram,
 ):
     # TODO: incident angle per pixel
     los_def = igram_unw_delta_phase_slice / (2 * 2 * np.pi) * wavelength
@@ -298,9 +304,11 @@ def compute_delta_deformation(
     assert row.shape == (1, 3)
     y = row[0, 1] - bbox[0][0]
     x = row[0, 2] - bbox[0][1]
-    # diff = ground_def[y, x] - calib_def
-    # print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
-    return ground_def  # - diff
+    if correct_E_per_igram:
+        diff = ground_def[y, x] - calib_def
+        print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
+        ground_def = ground_def - diff
+    return ground_def
 
 
 def compute_bounding_box(pixels, n=10):
@@ -317,52 +325,6 @@ def compute_bounding_box(pixels, n=10):
     max_x += n
 
     return ((min_y, min_x), (max_y, max_x))
-
-
-def resalt_integrand(z):
-    po = 0.9
-    pf = 0.45
-    # Chosen to make the VWC ~0.62 for an ALT of 0.36 cm (see Table 2)
-    # because paper reported this general average and this ALT average
-    # for CALM. Also the paper they cite [21?] has k=5.5
-    k = 5.5
-    return pf + (po - pf) * np.exp(-k * z)
-
-
-def alt_to_surface_deformation(alt):
-    # paper assumes exponential decay from 90% porosity to 45% porosity
-    # in general:
-    # P(z) = P_f + (Po - Pf)*e^(-kz)
-    # where P(f) = final porosity
-    #       P(o) = intial porosity
-    #       z is rate of exponential decay
-    # Without reading citation, let us assume k = 1
-    # Definite integral is now: https://www.wolframalpha.com/input?i=integrate+a+%2B+be%5E%28-kz%29+dz+from+0+to+x
-    pw = 0.997  # g/m^3
-    pi = 0.9168  # g/cm^3
-    integral, error = quad(resalt_integrand, 0, alt)
-    print("INTEGRAL/ALT", integral / alt)
-    assert error < 1e-5
-    return (pw - pi) / pi * integral
-
-
-def compute_alt_f_deformation(deformation):
-    assert deformation > 0, "Must provide a positive deformation in order to compute ALT"
-    po = 0.9
-    pf = 0.45
-    k = 1
-    pw = 0.997  # g/m^3
-    pi = 0.9168  # g/cm^3
-    integral_val = deformation * (pi / (pw - pi))
-
-    # Define the function to find its root
-    def objective(x, target):
-        integral, _ = quad(resalt_integrand, 0, x)
-        return integral - target
-
-    result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
-    assert result.converged
-    return result.root
 
 
 if __name__ == "__main__":
