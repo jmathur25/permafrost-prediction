@@ -51,7 +51,8 @@ def compute_stats(alt_pred, alt_gt):
     not_nan_mask = ~(nan_mask_1 | nan_mask_2)
     alt_pred = alt_pred[not_nan_mask]
     alt_gt = alt_gt[not_nan_mask]
-    diff = np.array(alt_pred) - np.array(alt_gt)
+    diff = alt_pred - alt_gt
+    print("ABS DIFF MEAN", np.mean(np.abs(diff)))
     e = 0.079
     resalt_e = 2*e
     psi_stat = np.square(diff/e)
