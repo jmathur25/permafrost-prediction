@@ -36,8 +36,7 @@ SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP128632170", "ALPSRP189022170"),
     ("ALPSRP182312170", "ALPSRP189022170"),
     ("ALPSRP189022170", "ALPSRP235992170"),
-    # gdal fails? ERROR 4: `/permafrost-prediction/src/py/data/isce2_outputs/ALPSRP235992170_ALPSRP242702170/interferogram/filt_topophase.unw' not recognized as a supported file format.
-    # ("ALPSRP235992170", "ALPSRP242702170"),
+    # ("ALPSRP235992170", "ALPSRP242702170"), # processing error
 ]
 
 
