@@ -61,7 +61,7 @@ def schaefer_method():
     # final correction is applied after tje
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
-    correct_E_per_igram = False
+    correct_E_per_igram = True
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -104,7 +104,7 @@ def schaefer_method():
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     calib_subsidence = alt_to_surface_deformation(calib_alt)
     # print("OVERRIDING SUB")
-    # calib_subsidence = alt_to_surface_deformation(calib_alt)
+    # calib_subsidence = 0.0202
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
 
     # RHS and LHS per-pixel of eq. 2
@@ -124,7 +124,15 @@ def schaefer_method():
         for i, scene_pair in enumerate(si):
             futures.append(
                 executor.submit(
-                    worker, i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+                    worker,
+                    i,
+                    scene_pair,
+                    df_alt_gt,
+                    df_calm,
+                    calib_point_id,
+                    df_temp,
+                    calib_subsidence,
+                    correct_E_per_igram,
                 )
             )
 
@@ -141,9 +149,6 @@ def schaefer_method():
 
     R = sol[0, :]
     E = sol[1, :]
-
-    np.save("R", R)
-    np.save("E", E)
 
     if not correct_E_per_igram:
         E = E + calib_subsidence
@@ -167,10 +172,10 @@ def schaefer_method():
     compute_stats(alt_pred, alt_gt)
 
 
-def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
+def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+        scene1, scene2, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
     )
     return i, lhs, rhs
 
@@ -198,7 +203,9 @@ def compute_ddt_ddf(df):
     df["ddt"] = ddt_list
 
 
-def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
+def process_scene_pair(
+    alos1, alos2, df_calm_points, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+):
     n = 1
     print(f"SPATIAL AVG n={n}")
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
@@ -246,6 +253,7 @@ def process_scene_pair(alos1, alos2, df_calm_points, calib_point_id, df_temp, ca
     igram_unw_phase_slice = compute_phase_slice(
         igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n=n
     )
+
     scaled_calib_def = calib_subsidence * sqrt_addt_diff
     igram_def = compute_deformation(
         igram_unw_phase_slice,
@@ -299,18 +307,16 @@ def plot_change(img, bbox, point_to_pixel, label):
 
 def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n):
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
-    if not correct_E_per_igram:
-        # Use phase-differences wrt to reference pixel
-        row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
-        assert row.shape == (1, 3)
-        y = row[0, 1] - bbox[0][0]
-        x = row[0, 2] - bbox[0][1]
-        n_over_2 = n // 2
-        extra = n % 2
-        calib_phase_slice = igram_unw_phase_slice[
-            y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra
-        ]
-        igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
+    # if not correct_E_per_igram:
+    # Use phase-differences wrt to reference pixel
+    row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
+    assert row.shape == (1, 3)
+    y = row[0, 1] - bbox[0][0]
+    x = row[0, 2] - bbox[0][1]
+    n_over_2 = n // 2
+    extra = n % 2
+    calib_phase_slice = igram_unw_phase_slice[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
+    igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
     return igram_unw_phase_slice
 
 
@@ -332,9 +338,10 @@ def compute_deformation(
     y = row[0, 1] - bbox[0][0]
     x = row[0, 2] - bbox[0][1]
     if correct_E_per_igram:
-        diff = ground_def[y, x] - calib_def
-        print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
-        ground_def = ground_def - diff
+        # diff = ground_def[y, x] + calib_def
+        # print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
+        # ground_def = ground_def - diff
+        ground_def = ground_def + calib_def
     return ground_def
 
 
