@@ -1,13 +1,19 @@
+import datetime
+import pathlib
 import pickle
 import click
 import numpy as np
 import matplotlib.pyplot as plt
 
-import gdal
+from osgeo import gdal
 
 import pandas as pd
 
+import h5py
 import tqdm
+import sys
+
+sys.path.append("/permafrost-prediction/src/py")
 from methods.utils import compute_stats, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
@@ -119,30 +125,34 @@ def schaefer_method():
     #     )
     #     lhs_all[i] = lhs
     #     rhs_all[i, :] = rhs
-    with ThreadPoolExecutor() as executor:
-        pbar = tqdm.tqdm(total=n)
-        futures = []
-        for i, scene_pair in enumerate(si):
-            futures.append(
-                executor.submit(
-                    worker,
-                    i,
-                    scene_pair,
-                    df_alt_gt,
-                    df_calm,
-                    calib_point_id,
-                    df_temp,
-                    calib_subsidence,
-                    correct_E_per_igram,
-                )
-            )
+    # with ThreadPoolExecutor() as executor:
+    #     pbar = tqdm.tqdm(total=n)
+    #     futures = []
+    #     for i, scene_pair in enumerate(si):
+    #         futures.append(
+    #             executor.submit(
+    #                 worker,
+    #                 i,
+    #                 scene_pair,
+    #                 df_alt_gt,
+    #                 df_calm,
+    #                 calib_point_id,
+    #                 df_temp,
+    #                 calib_subsidence,
+    #                 correct_E_per_igram,
+    #             )
+    #         )
 
-        for future in as_completed(futures):
-            pbar.update(1)
-            i, lhs, rhs = future.result()
-            lhs_all[i] = lhs
-            rhs_all[i, :] = rhs
-        pbar.close()
+    #     for future in as_completed(futures):
+    #         pbar.update(1)
+    #         i, lhs, rhs = future.result()
+    #         lhs_all[i] = lhs
+    #         rhs_all[i, :] = rhs
+    #     pbar.close()
+    correct_E_per_igram = True
+    mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
+    # igram_ex = mintpy_output_dir / "Igrams/20060618_20060803/filt_20060618_20060803.cor"
+    lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp)
 
     print("Solving equations")
     rhs_pi = np.linalg.pinv(rhs_all)
@@ -155,6 +165,12 @@ def schaefer_method():
         E = E + calib_subsidence
         # df_maxes = df_temp.groupby("year").max()
         # E_sol = E_sol * np.mean(np.sqrt(df_maxes["norm_ddt"].values))
+        print("AVG E", np.mean(E))
+
+    # MINTPY CORR
+    idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
+    diff = calib_subsidence - E[idx]
+    E += diff
 
     alt_pred = []
     # TODO: point to pixel needs to be represented better.
@@ -171,6 +187,11 @@ def schaefer_method():
     alt_pred = np.array(alt_pred)
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt, df_alt_gt.index)
+
+    df_alt_gt.to_csv("df_alt_gt.csv", index=True)
+    np.save("subsidence", E)
+    np.save("alt_preds", alt_pred)
+    np.save("alt_gt", alt_gt)
 
 
 def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
@@ -210,8 +231,8 @@ def process_scene_pair(
     n = 1
     print(f"SPATIAL AVG n={n}")
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
-    alos_d1 = get_date_for_alos(alos1)
-    alos_d2 = get_date_for_alos(alos2)
+    _, alos_d1 = get_date_for_alos(alos1)
+    _, alos_d2 = get_date_for_alos(alos2)
     print(f"Processing {alos1} on {alos_d1} and {alos2} on {alos_d2}")
     delta_t_years = (alos_d2 - alos_d1).days / 365
     norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
@@ -278,6 +299,53 @@ def process_scene_pair(
     return lhs, rhs
 
 
+def process_mintpy_timeseries(mintpy_outputs_dir, df_calm_points, df_temp):
+    lat_lon = LatLon(mintpy_outputs_dir / "geom_reference")
+
+    ds = gdal.Open(str(mintpy_outputs_dir / "geom_reference/incLocal.rdr"))
+    inc = ds.GetRasterBand(2).ReadAsArray()
+    del ds
+
+    f = h5py.File(mintpy_outputs_dir / "mintpy/timeseries_tropHgt_demErr.h5", "r")
+    los_def = f["timeseries"][()]
+    dates = f["date"][()]
+
+    point_to_pixel = []
+    for point, row in df_calm_points.iterrows():
+        lat = row["latitude"]
+        lon = row["longitude"]
+        y, x = lat_lon.find_closest_pixel(lat, lon)
+        point_to_pixel.append([point, y, x])
+    point_to_pixel = np.array(point_to_pixel)
+
+    ground_def = []
+    for _, py, px in point_to_pixel:
+        incidence_angle = inc[py, px] * np.pi / 180
+        ground_def.append(los_def[:, py, px] / np.cos(incidence_angle))
+    ground_def = np.stack(ground_def).transpose(1, 0)
+
+    lhs = []
+    rhs = []
+    for i in range(len(dates)):
+        for j in range(i + 1, len(dates)):
+            alos_d1 = datetime.datetime.strptime(dates[i].decode("utf-8"), "%Y%m%d")
+            alos_d2 = datetime.datetime.strptime(dates[j].decode("utf-8"), "%Y%m%d")
+            delta_t_years = (alos_d2 - alos_d1).days / 365
+            norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
+            print("NORM DT AFTER", norm_ddt_d2)
+            norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
+            print("NORM DT BEFORE", norm_ddt_d1)
+            sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
+            rhs_i = [delta_t_years, sqrt_addt_diff]
+            rhs.append(rhs_i)
+
+            pixel_diff = ground_def[j] - ground_def[i]
+            lhs.append(pixel_diff)
+    lhs = np.stack(lhs)
+    rhs = np.array(rhs)
+    return lhs, rhs
+
+
 def get_norm_ddt(df_temp, date):
     return df_temp.loc[date.year, date.month, date.day]["norm_ddt"]
 
@@ -308,7 +376,6 @@ def plot_change(img, bbox, point_to_pixel, label):
 
 def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n):
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
-    # if not correct_E_per_igram:
     # Use phase-differences wrt to reference pixel
     row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
     assert row.shape == (1, 3)

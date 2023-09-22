@@ -7,5 +7,5 @@
 		"./:/permafrost-prediction",
 		"/home/jatin/Desktop/permafrost/isce2:/opt/isce2/src/isce2"
 	],
-	"shareVSCode": true,
+	"shareVSCode": true
 }

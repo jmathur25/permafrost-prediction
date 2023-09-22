@@ -1,7 +1,7 @@
 from haversine import haversine
-from isce2.components import isceobj
+from isce.components import isceobj
 import numpy as np
-import gdal
+from osgeo import gdal
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from scipy.spatial import KDTree
@@ -26,14 +26,16 @@ def load_img(xml_path):
 
 
 class LatLon:
-    def __init__(self, results_dir):
+    def __init__(self, geometry_dir):
+        print(geometry_dir)
+        assert (geometry_dir / "lat.rdr").exists()
         # reading the lat/lon
-        ds = gdal.Open(str(results_dir / "geometry/lat.rdr"), gdal.GA_ReadOnly)
+        ds = gdal.Open(str(geometry_dir / "lat.rdr"), gdal.GA_ReadOnly)
         lat = ds.GetRasterBand(1).ReadAsArray()
         ds = None
 
         # reading the lat/lon
-        ds = gdal.Open(str(results_dir / "geometry/lon.rdr"), gdal.GA_ReadOnly)
+        ds = gdal.Open(str(geometry_dir / "lon.rdr"), gdal.GA_ReadOnly)
         lon = ds.GetRasterBand(1).ReadAsArray()
         ds = None
 
@@ -65,6 +67,9 @@ def compute_stats(alt_pred, alt_gt, points):
     diff = alt_pred - alt_gt
     print("ABS DIFF MEAN", np.mean(np.abs(diff)))
     e = 0.079
+    # computing proper uncertainty involves propogating model parameter error down
+    # (see https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2011JF002041)
+    # paper mentions that model uncertainty is ~2x measurement uncertainty, hence this appx
     resalt_e = 2 * e
     chi_stat = np.square(diff / e)
     mask_is_great = chi_stat < 1

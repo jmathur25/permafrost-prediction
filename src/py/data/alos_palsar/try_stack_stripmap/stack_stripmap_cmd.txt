@@ -1,0 +1,14 @@
+
+From https://github.com/isce-framework/isce2/blob/main/contrib/stack/stripmapStack/README.md"
+
+# works in MintPy container
+prepRawALOS.py -i download/ -o SLC
+
+# TODO: only works in ISCE-dedicated container. Had some weird issue with
+# using a shared object file. Maybe keep container separate? Also need to add:
+# export PATH=$PATH:/opt/isce2/src/isce2/contrib/stack/stripmapStack/
+# to ~/.bash_profile 
+bash run_unPackALOS
+
+# stackStripMap.py -s SLC/ -d demLat_N70_N72_Lon_W158_W154.dem.wgs84 -t 250 -b 1000 -a 14 -r 4 -u snaphu --useGPU
+stackStripMap.py -W ionosphere -s SLC/ -d demLat_N70_N72_Lon_W158_W154.dem.wgs84 -t 10000 -b 100000 -a 14 -r 4 -u snaphu --useGPU
