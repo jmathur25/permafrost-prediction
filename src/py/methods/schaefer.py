@@ -69,6 +69,8 @@ def schaefer_method():
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
+    # Run using MintPy instead of Schaefer approach. TODO: split off
+    mintpy = False
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -98,10 +100,12 @@ def schaefer_method():
     for year, df_t in df_temp.groupby("year"):
         compute_ddt_ddf(df_t)
         if norm_per_year:
-            # df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
-            date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-            end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
-            df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
+            # QUESTION: is "end of season" normalization when barrow measures or just highest
+            # DDT per year?
+            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
+            # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+            # end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
+            # df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
     if not norm_per_year:
@@ -119,40 +123,45 @@ def schaefer_method():
     n = len(si)
     lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
-    # for i, (scene1, scene2) in enumerate(si):
-    #     lhs, rhs = process_scene_pair(
-    #         scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
-    #     )
-    #     lhs_all[i] = lhs
-    #     rhs_all[i, :] = rhs
-    # with ThreadPoolExecutor() as executor:
-    #     pbar = tqdm.tqdm(total=n)
-    #     futures = []
-    #     for i, scene_pair in enumerate(si):
-    #         futures.append(
-    #             executor.submit(
-    #                 worker,
-    #                 i,
-    #                 scene_pair,
-    #                 df_alt_gt,
-    #                 df_calm,
-    #                 calib_point_id,
-    #                 df_temp,
-    #                 calib_subsidence,
-    #                 correct_E_per_igram,
-    #             )
-    #         )
+    if mintpy:
+        print("Running with MintPy solution")
+        correct_E_per_igram = False
+        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
+        lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp)
+    else:
+        # Single-threaded:
+        # for i, (scene1, scene2) in enumerate(si):
+        #     lhs, rhs = process_scene_pair(
+        #         scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+        #     )
+        #     lhs_all[i] = lhs
+        #     rhs_all[i, :] = rhs
 
-    #     for future in as_completed(futures):
-    #         pbar.update(1)
-    #         i, lhs, rhs = future.result()
-    #         lhs_all[i] = lhs
-    #         rhs_all[i, :] = rhs
-    #     pbar.close()
-    correct_E_per_igram = True
-    mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
-    # igram_ex = mintpy_output_dir / "Igrams/20060618_20060803/filt_20060618_20060803.cor"
-    lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp)
+        # Multi-threaded:
+        with ThreadPoolExecutor() as executor:
+            pbar = tqdm.tqdm(total=n)
+            futures = []
+            for i, scene_pair in enumerate(si):
+                futures.append(
+                    executor.submit(
+                        worker,
+                        i,
+                        scene_pair,
+                        df_alt_gt,
+                        df_calm,
+                        calib_point_id,
+                        df_temp,
+                        calib_subsidence,
+                        correct_E_per_igram,
+                    )
+                )
+
+            for future in as_completed(futures):
+                pbar.update(1)
+                i, lhs, rhs = future.result()
+                lhs_all[i] = lhs
+                rhs_all[i, :] = rhs
+            pbar.close()
 
     print("Solving equations")
     rhs_pi = np.linalg.pinv(rhs_all)
@@ -162,20 +171,30 @@ def schaefer_method():
     E = sol[1, :]
 
     if not correct_E_per_igram:
-        E = E + calib_subsidence
-        # df_maxes = df_temp.groupby("year").max()
-        # E_sol = E_sol * np.mean(np.sqrt(df_maxes["norm_ddt"].values))
+        # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
+        # already is per-season with measurement time normalized to 1.
+        # # Scale E based on measurement DDT
+        avg_sqrt_ddt = 0.0
+        years = df_temp.index.get_level_values(level=0).unique()
+        for year in years:
+            date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+            measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
+            avg_sqrt_ddt += np.sqrt(measurement_ddt)
+        avg_sqrt_ddt = avg_sqrt_ddt / len(years)
+        # E was formed assuming the measurement occurs at the end of the thaw season, yet
+        # in reality it did not. We scale E down by the average sqrt DDT of the measurement
+        # across the thaw seasons to get an estimate of the average E at measurement time.
+        # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
+        E = E * avg_sqrt_ddt
+
+        idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
+        # E[idx] should be approximately 0
+        delta_E = calib_subsidence - E[idx]
+        E += delta_E
+
         print("AVG E", np.mean(E))
 
-    # MINTPY CORR
-    idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
-    diff = calib_subsidence - E[idx]
-    E += diff
-
     alt_pred = []
-    # TODO: point to pixel needs to be represented better.
-    # we are assuming `process_scene_pair` keeps them
-    # in the same order.
     for e, point in zip(E, df_alt_gt.index):
         if e < 1e-3:
             print(f"Skipping {point} due to non-positive deformation")
@@ -236,9 +255,7 @@ def process_scene_pair(
     print(f"Processing {alos1} on {alos_d1} and {alos2} on {alos_d2}")
     delta_t_years = (alos_d2 - alos_d1).days / 365
     norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
-    print("NORM DT AFTER", norm_ddt_d2)
     norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-    print("NORM DT BEFORE", norm_ddt_d1)
     sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
@@ -251,7 +268,7 @@ def process_scene_pair(
     # igram = ds.GetRasterBand(1).ReadAsArray()
     # print("IGRAM", igram)
     # igram_unw_phase = np.angle(igram)
-    lat_lon = LatLon(isce_output_dir)
+    lat_lon = LatLon(isce_output_dir / "geometry")
 
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)

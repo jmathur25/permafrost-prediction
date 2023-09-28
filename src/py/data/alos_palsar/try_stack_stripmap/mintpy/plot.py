@@ -37,7 +37,7 @@ ll.find_closest_pixel(71.31072, -156.5893005)
 tsview.main('timeseries.h5 --ref-date 20060618 --ylim -8 8 --yx 1456 995 --noverbose --nodisplay'.split())
 
 # %%
-f = h5py.File('timeseries.h5', 'r')
+f = h5py.File('timeseries.h5', 'r') # timeseries.h5
 los_def = f['timeseries'][()]
 dates = f['date'][()]
 
@@ -65,7 +65,11 @@ print(ds.RasterXSize, ds.RasterYSize)
 
 
 # %%
-f = h5py.File('inputs/geometryRadar.h5', 'r')
-ia = f['incidenceAngle'][()]
+f = h5py.File('geo/geo_timeseries_tropHgt_demErr.h5', 'r')
+timeseries = f['timeseries'][()]
+date = f['date'][()]
+# %%
+f = h5py.File('geo/geo_geometryRadar.h5', 'r')
 lat = f['latitude'][()]
+lon = f['longitude'][()]
 # %%
