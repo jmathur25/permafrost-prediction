@@ -132,8 +132,9 @@ def schaefer_method():
     if mintpy:
         print("Running with MintPy solution")
         correct_E_per_igram = False
-        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
-        lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp, use_geo)
+        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
+        stack_stripmap_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/stack_stripmap_outputs/barrow_2006_2010")
+        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo)
     else:
         if multi_threaded:
             with ThreadPoolExecutor() as executor:
@@ -342,28 +343,28 @@ def process_scene_pair(
     return lhs, rhs
 
 
-def process_mintpy_timeseries(mintpy_outputs_dir, df_calm_points, df_temp, use_geo):
+def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo):
     # Two sets of lat/lon, one from geom_reference (which references from radar image),
     # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
     # reading of the interferogram from the geocoded output, which now presents the data
     # in Earth lat/lon coordinates.
-    lat_lon_inc = LatLonFile.RDR.create_lat_lon(mintpy_outputs_dir / "geom_reference")
+    lat_lon_inc = LatLonFile.RDR.create_lat_lon(stack_stripmap_output_dir / "geom_reference")
     if use_geo:
-        lat_lon_intfg = LatLonFile.H5.create_lat_lon(mintpy_outputs_dir / "mintpy/geo")
+        lat_lon_intfg = LatLonFile.H5.create_lat_lon(mintpy_outputs_dir / "geo")
     else:
         lat_lon_intfg = lat_lon_inc
 
     # TODO: can this also be geocoded?
-    ds = gdal.Open(str(mintpy_outputs_dir / "geom_reference/incLocal.rdr"))
+    ds = gdal.Open(str(stack_stripmap_output_dir / "geom_reference/incLocal.rdr"))
     inc = ds.GetRasterBand(2).ReadAsArray()
     del ds
     
     if use_geo:
-        f = h5py.File(mintpy_outputs_dir / "mintpy/geo/geo_timeseries_tropHgt_demErr.h5", "r")
+        f = h5py.File(mintpy_outputs_dir / "geo/geo_timeseries_tropHgt_demErr.h5", "r")
         los_def = f["timeseries"][()]
         dates = f["date"][()]
     else:
-        f = h5py.File(mintpy_outputs_dir / "mintpy/timeseries_tropHgt_demErr.h5", "r")
+        f = h5py.File(mintpy_outputs_dir / "timeseries_tropHgt_demErr.h5", "r")
         los_def = f["timeseries"][()]
         dates = f["date"][()]
 
