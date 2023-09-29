@@ -13,3 +13,4 @@ ALOS_PALSAR_DATA_DIR = _CURRENT_DIR / "alos_palsar"
 ALOS_L1_0_DIRNAME = "l1.0_data"
 
 ISCE2_OUTPUTS_DIR = _CURRENT_DIR / "isce2_outputs"
+STACK_STRIPMAP_OUTPUTS_DIR = _CURRENT_DIR / "stack_stripmap_outputs"

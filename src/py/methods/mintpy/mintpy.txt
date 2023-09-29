@@ -1,0 +1,2 @@
+# To run mintpy, followed: https://nbviewer.org/github/insarlab/MintPy-tutorial/blob/main/workflows/smallbaselineApp_aria.ipynb
+# Just did it manually step by step.
