@@ -1,4 +1,3 @@
-
 import os
 import pathlib
 import click
@@ -15,6 +14,7 @@ ALOS_TEMPLATE_XML = CURRENT_DIR / "alos_template.xml"
 STRIPMAP_APP_TEMPLATE_XML = CURRENT_DIR / "stripmapApp_template.xml"
 DEM_FILE = CURRENT_DIR / "demLat_N70_N72_Lon_W158_W154.dem.wgs84"
 
+
 @click.command()
 @click.argument("alos1")
 @click.argument("alos2")
@@ -26,7 +26,7 @@ def process_alos(alos1, alos2):
     # todo: document
     # todo: refactor to data? any data source could make an interferogram w another?
     # todo: standardize leaderfile/imagefile saving?
-    
+
     alos1_imagefile, alos1_leaderfile = get_alos_imagefile_leaderfile(alos1)
     alos2_imagefile, alos2_leaderfile = get_alos_imagefile_leaderfile(alos2)
 
@@ -75,13 +75,13 @@ def get_alos_imagefile_leaderfile(alos):
         elif f.startswith("IMG-"):
             assert imagefile is None
             imagefile = f
-    assert imagefile is not None, f'Could not find imagefile in: {files}'
-    assert leaderfile is not None, f'Could not find leaderfile in: {files}'
+    assert imagefile is not None, f"Could not find imagefile in: {files}"
+    assert leaderfile is not None, f"Could not find leaderfile in: {files}"
     return data_dir / imagefile, data_dir / leaderfile
 
 
 def modify_alos_xml(filename_in, filename_out, new_imagefile_value, new_leaderfile_value, output_folder):
-    with open(filename_in, 'r') as fp:
+    with open(filename_in, "r") as fp:
         lines = fp.readlines()
     new_lines = []
     mapping = {
@@ -91,14 +91,14 @@ def modify_alos_xml(filename_in, filename_out, new_imagefile_value, new_leaderfi
     }
     for i, l in enumerate(lines):
         wrote = False
-        for k,v in mapping.items():
+        for k, v in mapping.items():
             if k in l:
                 new_lines.append(l.replace(k, v))
                 wrote = True
                 break
         if not wrote:
             new_lines.append(l)
-    with open(filename_out, 'w') as fp:
+    with open(filename_out, "w") as fp:
         fp.writelines(new_lines)
 
 
@@ -111,20 +111,20 @@ def modify_stripmap_xml(filename_in, filename_out, new_reference_value, new_seco
     reference = insar.find(".//component[@name='reference']")
     secondary = insar.find(".//component[@name='secondary']")
     dem = insar.find("./property[@name='demFilename']/value")
-    
+
     assert reference is not None
     assert secondary is not None
     assert dem is not None
-    catalog_ref = reference.find('catalog')
+    catalog_ref = reference.find("catalog")
     catalog_ref.text = str(new_reference_value)
-        
-    catalog_sec = secondary.find('catalog')
+
+    catalog_sec = secondary.find("catalog")
     catalog_sec.text = str(new_secondary_value)
 
     dem.text = str(dem_filepath)
-            
+
     tree.write(filename_out)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

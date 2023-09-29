@@ -34,7 +34,7 @@ class StandardDataFormatColumns(enum.Enum):
         if savepath.exists():
             if not prompt_user(f"Data already processed to {savepath}. Reprocess?"):
                 return
-            
+
         # order the columns in a consistent order
         df = df[[c.value for c in StandardDataFormatColumns]]
         df.to_csv(savepath, index=False)
@@ -50,7 +50,6 @@ class CALMDownloadSite(enum.Enum):
     BARROW = "Barrow"
 
     def download(self):
-
         def download_file(url: str, savepath: pathlib.Path):
             savepath.parent.mkdir(parents=True, exist_ok=True)
             if savepath.exists():
@@ -58,35 +57,46 @@ class CALMDownloadSite(enum.Enum):
                     return
             resp = requests.get(url)
             if resp.status_code == 200:
-                with open(savepath, 'wb') as f:
+                with open(savepath, "wb") as f:
                     f.write(resp.content)
             else:
-                raise ValueError(f"Failed to download file from {url}. HTTP Status Code: {resp.status_code}. Message: {resp.content}")
+                raise ValueError(
+                    f"Failed to download file from {url}. HTTP Status Code: {resp.status_code}. Message: {resp.content}"
+                )
 
         if self == CALMDownloadSite.BARROW:
-            url = urljoin(CALM_DOWNLOAD_URL, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls")
+            url = urljoin(
+                CALM_DOWNLOAD_URL, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls"
+            )
             savepath = CALM_RAW_DATA_DIR / "U1_alt_1995_2022.xls"
             download_file(url, savepath)
             # We may need to use other sheets in the future
-            df = pd.read_excel(savepath, sheet_name='data')
+            df = pd.read_excel(savepath, sheet_name="data")
             df = df[:121]  # 121 nodes. Ignore the last few points cause they are averages. We don't need them.
-            df = df.rename({
-                    'GridNode': StandardDataFormatColumns.POINT_ID.value,
-                    'Latitude': StandardDataFormatColumns.LATITUDE.value,
-                    'Longitude': StandardDataFormatColumns.LONGITUDE.value,
-                }, axis=1
+            df = df.rename(
+                {
+                    "GridNode": StandardDataFormatColumns.POINT_ID.value,
+                    "Latitude": StandardDataFormatColumns.LATITUDE.value,
+                    "Longitude": StandardDataFormatColumns.LONGITUDE.value,
+                },
+                axis=1,
             )
             alt_cols = [col for col in df.columns if col.startswith("al-")]
-            used_cols = [StandardDataFormatColumns.POINT_ID.value, StandardDataFormatColumns.LATITUDE.value, StandardDataFormatColumns.LONGITUDE.value]
+            used_cols = [
+                StandardDataFormatColumns.POINT_ID.value,
+                StandardDataFormatColumns.LATITUDE.value,
+                StandardDataFormatColumns.LONGITUDE.value,
+            ]
+
             def parse_date(alt_col):
                 # examples: al-080295, al-81409
-                numeric_part = alt_col.split('-')[-1]
+                numeric_part = alt_col.split("-")[-1]
 
                 try:
-                    return datetime.datetime.strptime(numeric_part, '%m%d%y')
+                    return datetime.datetime.strptime(numeric_part, "%m%d%y")
                 except Exception as e:
                     raise ValueError(f"Failed to parse col {alt_col}. Error: {e}")
-                
+
             date_dfs = []
             for date_col in alt_cols:
                 df_date = df[used_cols + [date_col]].copy()
@@ -104,7 +114,11 @@ class CALMDownloadSite(enum.Enum):
 
 
 @click.command()
-@click.option("--site", type=click.Choice([e.value for e in CALMDownloadSite], case_sensitive=False), help="CALM Site from which to download.")
+@click.option(
+    "--site",
+    type=click.Choice([e.value for e in CALMDownloadSite], case_sensitive=False),
+    help="CALM Site from which to download.",
+)
 def calm(site: Optional[str]):
     sites = None
     if site is not None:
@@ -112,7 +126,7 @@ def calm(site: Optional[str]):
     else:
         print("Downloading data for all CALM sites...")
         sites = [site for site in CALMDownloadSite]
-    
+
     pbar = tqdm.tqdm(sites)
     for site in pbar:
         # adds typing annotation

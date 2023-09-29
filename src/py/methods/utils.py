@@ -1,3 +1,4 @@
+import pathlib
 from haversine import haversine
 from isce.components import isceobj
 import numpy as np
@@ -5,6 +6,7 @@ from osgeo import gdal
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from scipy.spatial import KDTree
+import xml.etree.ElementTree as ET
 
 
 # from DownsampleUnwrapper
@@ -23,6 +25,34 @@ def load_img(xml_path):
     else:  # the other option is the unw which is 2 bands BIL
         im = im.reshape([length, img.bands, width])
     return im
+
+
+class LatLonGeo:
+    def __init__(self, intfg: pathlib.Path):
+        self.root = ET.parse(str(intfg) + ".xml")
+        self.start_lon, self.delta_lon = self.extract_values("coordinate1")
+        self.start_lat, self.delta_lat = self.extract_values("coordinate2")
+        vert_res = (
+            haversine((self.start_lat, self.start_lon), (self.start_lat + 1000 * self.delta_lat, self.start_lon)) / 1000
+        ) * 1000
+        horiz_res = (
+            haversine((self.start_lat, self.start_lon), (self.start_lat, 1000 * self.delta_lon + self.start_lon)) / 1000
+        ) * 1000
+        print("HORIZ RES (m):", horiz_res)
+        print("VERT RES (m):", vert_res)
+
+    def extract_values(self, coordinate_name):
+        coord = self.root.find(f".//component[@name='{coordinate_name}']")
+        starting_value = coord.find(".//property[@name='startingvalue']/value").text
+        delta = coord.find(".//property[@name='delta']/value").text
+        return float(starting_value), float(delta)
+
+    def find_closest_pixel(self, lat, lon):
+        y = round((lat - self.start_lat) / self.delta_lat)
+        x = round((lon - self.start_lon) / self.delta_lon)
+        assert y >= 0
+        assert x >= 0
+        return y, x
 
 
 class LatLon:

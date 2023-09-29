@@ -1,4 +1,3 @@
-
 import os
 import shutil
 from typing import Tuple
@@ -8,10 +7,11 @@ from consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
 from utils import prompt_user
 import re
 
+
 @click.command()
-@click.argument('username')
-@click.argument('password')
-@click.argument('granules', nargs=-1)
+@click.argument("username")
+@click.argument("password")
+@click.argument("granules", nargs=-1)
 def alos_palsar_granule(username, password, granules: Tuple[str]):
     assert len(granules) > 0
     chosen_granules = []
@@ -28,7 +28,7 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
     del granules
     if len(chosen_granules) == 0:
         return
-    
+
     print(f"Searching for granules: {chosen_granules}")
     results = asf.granule_search(chosen_granules)
     # TODO: make sure if search is valid
@@ -39,12 +39,14 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
     results.download(path=ALOS_PALSAR_DATA_DIR, session=session)
 
     prefix = "ALPSRP"
-    all_dowloaded_files = set([f for f in os.listdir(ALOS_PALSAR_DATA_DIR) if not os.path.isdir(ALOS_PALSAR_DATA_DIR / f)])
+    all_dowloaded_files = set(
+        [f for f in os.listdir(ALOS_PALSAR_DATA_DIR) if not os.path.isdir(ALOS_PALSAR_DATA_DIR / f)]
+    )
     print("Moving downloads into respective folders")
     l1_folders = []
     for granule, savedir in zip(chosen_granules, savedirs):
         assert granule.startswith(prefix), f"Unexpected granule: {granule}"
-        n1 = int(granule[len(prefix):-4])
+        n1 = int(granule[len(prefix) : -4])
         n2 = int(granule[-4:])
         matched_files = []
         for f in all_dowloaded_files:
@@ -73,7 +75,7 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
                 shutil.move(str(ALOS_PALSAR_DATA_DIR / f), str(other_savedir))
             all_dowloaded_files.remove(f)
         assert found_l1_0_file, f"Found no raw data file (with L1.0 in its name) for {granule}"
-    
+
     assert len(all_dowloaded_files) == 0, f"Could not match these files: {all_downloaded_files}"
 
     print("Extracting the raw (L1.0) data")

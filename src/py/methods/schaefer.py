@@ -14,7 +14,7 @@ import tqdm
 import sys
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import compute_stats, LatLon
+from methods.utils import compute_stats, LatLon, LatLonGeo
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
@@ -63,7 +63,7 @@ def schaefer_method():
     end_year = 2010
 
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
-    norm_per_year = True
+    norm_per_year = False  # True
     # If False, matrix solves a delta deformation problem with respect to calibration point. A
     # final correction is applied after tje
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
@@ -71,6 +71,8 @@ def schaefer_method():
     correct_E_per_igram = False
     # Run using MintPy instead of Schaefer approach. TODO: split off
     mintpy = False
+
+    multi_threaded = True
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -129,39 +131,38 @@ def schaefer_method():
         mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
         lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp)
     else:
-        # Single-threaded:
-        # for i, (scene1, scene2) in enumerate(si):
-        #     lhs, rhs = process_scene_pair(
-        #         scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
-        #     )
-        #     lhs_all[i] = lhs
-        #     rhs_all[i, :] = rhs
-
-        # Multi-threaded:
-        with ThreadPoolExecutor() as executor:
-            pbar = tqdm.tqdm(total=n)
-            futures = []
-            for i, scene_pair in enumerate(si):
-                futures.append(
-                    executor.submit(
-                        worker,
-                        i,
-                        scene_pair,
-                        df_alt_gt,
-                        df_calm,
-                        calib_point_id,
-                        df_temp,
-                        calib_subsidence,
-                        correct_E_per_igram,
+        if multi_threaded:
+            with ThreadPoolExecutor() as executor:
+                pbar = tqdm.tqdm(total=n)
+                futures = []
+                for i, scene_pair in enumerate(si):
+                    futures.append(
+                        executor.submit(
+                            worker,
+                            i,
+                            scene_pair,
+                            df_alt_gt,
+                            df_calm,
+                            calib_point_id,
+                            df_temp,
+                            calib_subsidence,
+                            correct_E_per_igram,
+                        )
                     )
-                )
 
-            for future in as_completed(futures):
-                pbar.update(1)
-                i, lhs, rhs = future.result()
+                for future in as_completed(futures):
+                    pbar.update(1)
+                    i, lhs, rhs = future.result()
+                    lhs_all[i] = lhs
+                    rhs_all[i, :] = rhs
+                pbar.close()
+        else:
+            for i, (scene1, scene2) in enumerate(si):
+                lhs, rhs = process_scene_pair(
+                    scene1, scene2, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+                )
                 lhs_all[i] = lhs
                 rhs_all[i, :] = rhs
-            pbar.close()
 
     print("Solving equations")
     rhs_pi = np.linalg.pinv(rhs_all)
@@ -174,18 +175,19 @@ def schaefer_method():
         # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
         # already is per-season with measurement time normalized to 1.
         # # Scale E based on measurement DDT
-        avg_sqrt_ddt = 0.0
-        years = df_temp.index.get_level_values(level=0).unique()
-        for year in years:
-            date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-            measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
-            avg_sqrt_ddt += np.sqrt(measurement_ddt)
-        avg_sqrt_ddt = avg_sqrt_ddt / len(years)
+        # avg_sqrt_ddt = 0.0
+        # years = df_temp.index.get_level_values(level=0).unique()
+        # for year in years:
+        #     # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+        #     # measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
+        #     measurement_ddt = df_temp.loc[year, 12, 31]["norm_ddt"]
+        #     avg_sqrt_ddt += np.sqrt(measurement_ddt)
+        # avg_sqrt_ddt = avg_sqrt_ddt / len(years)
         # E was formed assuming the measurement occurs at the end of the thaw season, yet
         # in reality it did not. We scale E down by the average sqrt DDT of the measurement
         # across the thaw seasons to get an estimate of the average E at measurement time.
         # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
-        E = E * avg_sqrt_ddt
+        # E = E * avg_sqrt_ddt
 
         idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
         # E[idx] should be approximately 0
@@ -259,7 +261,7 @@ def process_scene_pair(
     sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
-    intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
+    intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"  # .geo
     ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
     igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
     # print("USING WRAPPED PHASE")
@@ -269,6 +271,7 @@ def process_scene_pair(
     # print("IGRAM", igram)
     # igram_unw_phase = np.angle(igram)
     lat_lon = LatLon(isce_output_dir / "geometry")
+    # lat_lon = LatLonGeo(intfg_unw_file)
 
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)
