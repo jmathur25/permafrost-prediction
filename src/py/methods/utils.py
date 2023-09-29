@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+from enum import Enum
 import pathlib
 from haversine import haversine
 from isce.components import isceobj
@@ -7,7 +9,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from scipy.spatial import KDTree
 import xml.etree.ElementTree as ET
-
+import h5py
 
 # from DownsampleUnwrapper
 def load_img(xml_path):
@@ -27,8 +29,42 @@ def load_img(xml_path):
     return im
 
 
-class LatLonGeo:
+class LatLonFile(Enum):
+    RDR = "rdr" # ISCE2 output in radar image frame
+    H5 = "h5" # MintPy output after geocoding
+    XML = "xml" # ISCE2 output after geocoding
+    
+    
+    def create_lat_lon(self, path: pathlib.Path) -> "LatLon":
+        if self == LatLonFile.RDR:
+            ds = gdal.Open(str(path / "lat.rdr"), gdal.GA_ReadOnly)
+            lat = ds.GetRasterBand(1).ReadAsArray()
+            ds = None
+
+            # reading the lat/lon
+            ds = gdal.Open(str(path / "lon.rdr"), gdal.GA_ReadOnly)
+            lon = ds.GetRasterBand(1).ReadAsArray()
+            del ds
+            return LatLonArray(lat, lon)
+        elif self == LatLonFile.H5:
+            geo_file = path / "geo_geometryRadar.h5"
+            geo_data = h5py.File(geo_file)
+            lat = geo_data['latitude'][()]
+            lon = geo_data['longitude'][()]
+            return LatLonArray(lat, lon)
+        elif self == LatLonFile.XML:
+            return LatLonXML(path)
+
+class LatLon(ABC):
+    
+    @abstractmethod
+    def find_closest_pixel(self, lat, lon):
+        pass
+    
+    
+class LatLonXML(LatLon):
     def __init__(self, intfg: pathlib.Path):
+        assert intfg.suffix == '.geo'
         self.root = ET.parse(str(intfg) + ".xml")
         self.start_lon, self.delta_lon = self.extract_values("coordinate1")
         self.start_lat, self.delta_lat = self.extract_values("coordinate2")
@@ -38,8 +74,8 @@ class LatLonGeo:
         horiz_res = (
             haversine((self.start_lat, self.start_lon), (self.start_lat, 1000 * self.delta_lon + self.start_lon)) / 1000
         ) * 1000
-        print("HORIZ RES (m):", horiz_res)
         print("VERT RES (m):", vert_res)
+        print("HORIZ RES (m):", horiz_res)
 
     def extract_values(self, coordinate_name):
         coord = self.root.find(f".//component[@name='{coordinate_name}']")
@@ -56,29 +92,31 @@ class LatLonGeo:
         assert y >= 0
         assert x >= 0
         return y, x
+    
 
 
-class LatLon:
-    def __init__(self, geometry_dir):
-        print(geometry_dir)
-        assert (geometry_dir / "lat.rdr").exists()
-        # reading the lat/lon
-        ds = gdal.Open(str(geometry_dir / "lat.rdr"), gdal.GA_ReadOnly)
-        lat = ds.GetRasterBand(1).ReadAsArray()
-        ds = None
-
-        # reading the lat/lon
-        ds = gdal.Open(str(geometry_dir / "lon.rdr"), gdal.GA_ReadOnly)
-        lon = ds.GetRasterBand(1).ReadAsArray()
-        ds = None
-
+class LatLonArray(LatLon):
+    def __init__(self, lat: np.ndarray, lon: np.ndarray):
         self.lat_arr = lat
         self.lon_arr = lon
+        
+        # lat/lon can be nan is doing geocoding, as the radar image
+        # will not be perfectly rectangular in Earth lat/lon coordinate system
+        not_nans = np.argwhere(~np.isnan(self.lat_arr))
+        idx1 = not_nans[0]
+        idx2 = not_nans[-1]
+        dy_pix = idx2[0] - idx1[0]
+        dx_pix = idx2[1] - idx1[1]
+        # Cannot make meaningful claims on pixel resolution unless we have enough
+        assert dy_pix > 100
+        assert dx_pix > 100
+        diag_dist_meters = 1000 * haversine((self.lat_arr[idx2[0], idx2[1]], self.lon_arr[idx2[0], idx2[1]]), (self.lat_arr[idx1[0], idx1[1]], self.lon_arr[idx1[0], idx1[1]]))
+        theta = np.arctan2(dy_pix, dx_pix)
+        dy_meters = diag_dist_meters * np.sin(theta)
+        dx_meters = diag_dist_meters * np.cos(theta)
 
-        horiz_dist = haversine((lat[0, 0], lon[0, 0]), (lat[0, -1], lon[0, -1]))
-        vert_dist = haversine((lat[0, 0], lon[0, 0]), (lat[-1, 0], lon[-1, 0]))
-        print("HORIZ RES (m)", horiz_dist / lat.shape[1] * 1000)
-        print("VERT RES (m)", vert_dist / lat.shape[0] * 1000)
+        print("VERT RES (m)", dy_meters / dy_pix)
+        print("HORIZ RES (m)", dx_meters / dx_pix)
 
         self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
         self.kd_tree = KDTree(self.flattened_coordinates)

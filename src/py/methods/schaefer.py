@@ -14,7 +14,7 @@ import tqdm
 import sys
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import compute_stats, LatLon, LatLonGeo
+from methods.utils import LatLonFile, compute_stats
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
@@ -70,12 +70,13 @@ def schaefer_method():
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = False
+    mintpy = True
 
     multi_threaded = True
 
     # Use the geo-corrected interferogram products instead of radar geometry
-    use_geo = True
+    # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
+    use_geo = False
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -132,7 +133,7 @@ def schaefer_method():
         print("Running with MintPy solution")
         correct_E_per_igram = False
         mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/")
-        lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp)
+        lhs_all, rhs_all = process_mintpy_timeseries(mintpy_output_dir, df_alt_gt, df_temp, use_geo)
     else:
         if multi_threaded:
             with ThreadPoolExecutor() as executor:
@@ -264,6 +265,7 @@ def process_scene_pair(
     n_vert = 1
     if use_geo:
         # Horizontal resolution is around 10m for geo-corrected interferogram and we want 30mx30m
+        # TODO: do not hardcode
         n_horiz = 3
     print(f"SPATIAL AVG {n_vert}x{n_horiz}")
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
@@ -288,9 +290,9 @@ def process_scene_pair(
     # print("IGRAM", igram)
     # igram_unw_phase = np.angle(igram)
     if use_geo:
-        lat_lon = LatLonGeo(intfg_unw_file)
+        lat_lon = LatLonFile.XML.create_lat_lon(intfg_unw_file)
     else:
-        lat_lon = LatLon(isce_output_dir / "geometry")
+        lat_lon = LatLonFile.RDR.create_lat_lon(isce_output_dir / "geometry")
 
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)
@@ -340,29 +342,49 @@ def process_scene_pair(
     return lhs, rhs
 
 
-def process_mintpy_timeseries(mintpy_outputs_dir, df_calm_points, df_temp):
-    lat_lon = LatLon(mintpy_outputs_dir / "geom_reference")
+def process_mintpy_timeseries(mintpy_outputs_dir, df_calm_points, df_temp, use_geo):
+    # Two sets of lat/lon, one from geom_reference (which references from radar image),
+    # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
+    # reading of the interferogram from the geocoded output, which now presents the data
+    # in Earth lat/lon coordinates.
+    lat_lon_inc = LatLonFile.RDR.create_lat_lon(mintpy_outputs_dir / "geom_reference")
+    if use_geo:
+        lat_lon_intfg = LatLonFile.H5.create_lat_lon(mintpy_outputs_dir / "mintpy/geo")
+    else:
+        lat_lon_intfg = lat_lon_inc
 
+    # TODO: can this also be geocoded?
     ds = gdal.Open(str(mintpy_outputs_dir / "geom_reference/incLocal.rdr"))
     inc = ds.GetRasterBand(2).ReadAsArray()
     del ds
+    
+    if use_geo:
+        f = h5py.File(mintpy_outputs_dir / "mintpy/geo/geo_timeseries_tropHgt_demErr.h5", "r")
+        los_def = f["timeseries"][()]
+        dates = f["date"][()]
+    else:
+        f = h5py.File(mintpy_outputs_dir / "mintpy/timeseries_tropHgt_demErr.h5", "r")
+        los_def = f["timeseries"][()]
+        dates = f["date"][()]
 
-    f = h5py.File(mintpy_outputs_dir / "mintpy/timeseries_tropHgt_demErr.h5", "r")
-    los_def = f["timeseries"][()]
-    dates = f["date"][()]
-
-    point_to_pixel = []
+    point_to_pixel_inc = []
+    point_to_pixel_intfg = []
     for point, row in df_calm_points.iterrows():
         lat = row["latitude"]
         lon = row["longitude"]
-        y, x = lat_lon.find_closest_pixel(lat, lon)
-        point_to_pixel.append([point, y, x])
-    point_to_pixel = np.array(point_to_pixel)
+        y, x = lat_lon_inc.find_closest_pixel(lat, lon)
+        point_to_pixel_inc.append([point, y, x])
+
+        y, x = lat_lon_intfg.find_closest_pixel(lat, lon)
+        point_to_pixel_intfg.append([point, y, x])
+
+    point_to_pixel_inc = np.array(point_to_pixel_inc)
+    point_to_pixel_intfg = np.array(point_to_pixel_intfg)
 
     ground_def = []
-    for _, py, px in point_to_pixel:
-        incidence_angle = inc[py, px] * np.pi / 180
-        ground_def.append(los_def[:, py, px] / np.cos(incidence_angle))
+    for (py_inc, px_inc), (py_intfg, px_intfg) in zip(point_to_pixel_inc[:,[1,2]], point_to_pixel_intfg[:,[1,2]]):
+        incidence_angle = inc[py_inc, px_inc] * np.pi / 180
+        ground_def.append(los_def[:, py_intfg, px_intfg] / np.cos(incidence_angle))
     ground_def = np.stack(ground_def).transpose(1, 0)
 
     lhs = []
@@ -373,9 +395,7 @@ def process_mintpy_timeseries(mintpy_outputs_dir, df_calm_points, df_temp):
             alos_d2 = datetime.datetime.strptime(dates[j].decode("utf-8"), "%Y%m%d")
             delta_t_years = (alos_d2 - alos_d1).days / 365
             norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
-            print("NORM DT AFTER", norm_ddt_d2)
             norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-            print("NORM DT BEFORE", norm_ddt_d1)
             sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
             rhs_i = [delta_t_years, sqrt_addt_diff]
             rhs.append(rhs_i)
