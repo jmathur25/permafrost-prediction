@@ -65,7 +65,7 @@ def schaefer_method():
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
     norm_per_year = False  # True
     # If False, matrix solves a delta deformation problem with respect to calibration point. A
-    # final correction is applied after tje
+    # final correction is applied after solving to make the calibration point have the right subsidence.
     # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
@@ -73,6 +73,9 @@ def schaefer_method():
     mintpy = False
 
     multi_threaded = True
+
+    # Use the geo-corrected interferogram products instead of radar geometry
+    use_geo = True
 
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
@@ -147,6 +150,7 @@ def schaefer_method():
                             df_temp,
                             calib_subsidence,
                             correct_E_per_igram,
+                            use_geo,
                         )
                     )
 
@@ -159,7 +163,14 @@ def schaefer_method():
         else:
             for i, (scene1, scene2) in enumerate(si):
                 lhs, rhs = process_scene_pair(
-                    scene1, scene2, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+                    scene1,
+                    scene2,
+                    df_alt_gt,
+                    calib_point_id,
+                    df_temp,
+                    calib_subsidence,
+                    correct_E_per_igram,
+                    use_geo,
                 )
                 lhs_all[i] = lhs
                 rhs_all[i, :] = rhs
@@ -215,10 +226,10 @@ def schaefer_method():
     np.save("alt_gt", alt_gt)
 
 
-def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram):
+def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo
     )
     return i, lhs, rhs
 
@@ -247,10 +258,14 @@ def compute_ddt_ddf(df):
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo
 ):
-    n = 1
-    print(f"SPATIAL AVG n={n}")
+    n_horiz = 1
+    n_vert = 1
+    if use_geo:
+        # Horizontal resolution is around 10m for geo-corrected interferogram and we want 30mx30m
+        n_horiz = 3
+    print(f"SPATIAL AVG {n_vert}x{n_horiz}")
     isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
     _, alos_d1 = get_date_for_alos(alos1)
     _, alos_d2 = get_date_for_alos(alos2)
@@ -261,7 +276,9 @@ def process_scene_pair(
     sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
-    intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"  # .geo
+    intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
+    if use_geo:
+        intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
     ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
     igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
     # print("USING WRAPPED PHASE")
@@ -270,8 +287,10 @@ def process_scene_pair(
     # igram = ds.GetRasterBand(1).ReadAsArray()
     # print("IGRAM", igram)
     # igram_unw_phase = np.angle(igram)
-    lat_lon = LatLon(isce_output_dir / "geometry")
-    # lat_lon = LatLonGeo(intfg_unw_file)
+    if use_geo:
+        lat_lon = LatLonGeo(intfg_unw_file)
+    else:
+        lat_lon = LatLon(isce_output_dir / "geometry")
 
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)
@@ -292,9 +311,7 @@ def process_scene_pair(
     bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
     print(f"Bounding box set to: {bbox}")
 
-    igram_unw_phase_slice = compute_phase_slice(
-        igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n=n
-    )
+    igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert)
 
     scaled_calib_def = calib_subsidence * sqrt_addt_diff
     igram_def = compute_deformation(
@@ -309,12 +326,16 @@ def process_scene_pair(
     )
 
     lhs = []
-    n_over_2 = n // 2
-    extra = n % 2
+    n_over_2_vert = n_vert // 2
+    extra_vert = n_vert % 2
+    n_over_2_horiz = n_horiz // 2
+    extra_horiz = n_horiz % 2
     for _, y, x in point_to_pixel:
         y -= bbox[0][0]
         x -= bbox[0][1]
-        igram_slice = igram_def[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
+        igram_slice = igram_def[
+            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
+        ]
         lhs.append(igram_slice.mean())
     return lhs, rhs
 
@@ -394,16 +415,27 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.show()
 
 
-def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, correct_E_per_igram, n):
+def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert):
+    # negative because all inteferograms were computed with granule 1 as the reference
+    # and granule 2 as the secondary. This means the phase difference is granule 1 - granule 2.
+    # However, the RHS is constructed as data at time of granule 2 - data at time of granule 1.
+    # For example, if granule 1 was taken in in June in 2006 and graule 2 in Aug in 2006, we have two things:
+    # 1. RHS (time difference and sqrt ADDT diff), which would be those values in Aug - those values in June
+    # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
+    # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
     # Use phase-differences wrt to reference pixel
     row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
     assert row.shape == (1, 3)
     y = row[0, 1] - bbox[0][0]
     x = row[0, 2] - bbox[0][1]
-    n_over_2 = n // 2
-    extra = n % 2
-    calib_phase_slice = igram_unw_phase_slice[y - n_over_2 : y + n_over_2 + extra, x - n_over_2 : x + n_over_2 + extra]
+    n_over_2_vert = n_vert // 2
+    extra_vert = n_vert % 2
+    n_over_2_horiz = n_horiz // 2
+    extra_horiz = n_horiz % 2
+    calib_phase_slice = igram_unw_phase_slice[
+        y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
+    ]
     igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
     return igram_unw_phase_slice
 

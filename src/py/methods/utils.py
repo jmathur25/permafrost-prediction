@@ -48,8 +48,11 @@ class LatLonGeo:
         return float(starting_value), float(delta)
 
     def find_closest_pixel(self, lat, lon):
-        y = round((lat - self.start_lat) / self.delta_lat)
-        x = round((lon - self.start_lon) / self.delta_lon)
+        # int() led to perfect alignment with another tool that converted the .geo
+        # into a .tif, and then using a lat/lon to pixel function on the .tif.
+        # round() led to discrepencies.
+        y = int((lat - self.start_lat) / self.delta_lat)
+        x = int((lon - self.start_lon) / self.delta_lon)
         assert y >= 0
         assert x >= 0
         return y, x
