@@ -1,0 +1,20 @@
+python
+astropy
+geopandas
+hyp3_sdk
+imagemagick
+seaborn
+scikit-learn
+awscli            #download
+wget              #download
+pv                #for tar progress bar during decompression
+pyfftw            #for unwrap_error
+opencv            #required by isce2 but not installed by conda
+# notebooks
+jupyterlab
+#jupyter_nbextensions_configurator  # version 0.6.3 is required but not available on conda-forge yet
+nbdime            #for readable nb differences
+ipympl            #for interactive matplotlib
+# compilers
+cxx-compiler      #for scalene installation on Linux
+fortran-compiler  #for pysolid installation in development mode

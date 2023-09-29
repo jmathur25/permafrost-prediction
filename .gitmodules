@@ -1,0 +1,3 @@
+[submodule "dev_setup/mintpy/MintPy"]
+	path = dev_setup/mintpy/MintPy
+	url = https://github.com/insarlab/MintPy
