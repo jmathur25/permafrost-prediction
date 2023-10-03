@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import code
 
-from data.consts import CALM_DOWNLOAD_URL, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
+from data.consts import DATA_PARENT_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
 from data.sar import alos_palsar_granule
 from data.utils import prompt_user
 
@@ -66,7 +66,7 @@ class CALMDownloadSite(enum.Enum):
 
         if self == CALMDownloadSite.BARROW:
             url = urljoin(
-                CALM_DOWNLOAD_URL, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls"
+                DATA_PARENT_FOLDER, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls"
             )
             savepath = CALM_RAW_DATA_DIR / "U1_alt_1995_2022.xls"
             download_file(url, savepath)

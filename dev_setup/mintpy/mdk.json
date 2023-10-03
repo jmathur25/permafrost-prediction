@@ -5,6 +5,7 @@
     ],
     "volumes": [
         "./../../:/permafrost-prediction",
+        "./../../../permafrost-prediction-shared-data:/permafrost-prediction-shared-data",
         "./MintPy:/MintPy"
     ],
     "shareVSCode": true

@@ -15,7 +15,7 @@ import sys
 
 sys.path.append("/permafrost-prediction/src/py")
 from methods.utils import LatLonFile, compute_stats
-from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
+from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -133,7 +133,7 @@ def schaefer_method():
         print("Running with MintPy solution")
         correct_E_per_igram = False
         mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
-        stack_stripmap_output_dir = pathlib.Path("/permafrost-prediction/src/py/data/stack_stripmap_outputs/barrow_2006_2010")
+        stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
         lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo)
     else:
         if multi_threaded:
