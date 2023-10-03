@@ -70,7 +70,7 @@ def schaefer_method():
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = True
+    mintpy = False
 
     multi_threaded = True
 
