@@ -1,0 +1,12 @@
+{
+    "image": "ubuntu_22.04_mintpy:latest",
+    "options": [
+        "--network=host"
+    ],
+    "volumes": [
+        "./../../:/permafrost-prediction",
+        "./../../../permafrost-prediction-shared-data:/permafrost-prediction-shared-data",
+        "./MintPy:/MintPy"
+    ],
+    "shareVSCode": true
+}

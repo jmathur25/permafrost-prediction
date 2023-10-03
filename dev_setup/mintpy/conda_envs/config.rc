@@ -1,0 +1,46 @@
+# vim: set filetype=sh:
+echo "source ~/tools/conda_envs/insar/config.rc"
+
+# root directory
+export TOOL_DIR=~/tools
+export DATA_DIR=~/data   # data / nobak
+
+if [ -z ${PYTHONPATH+x} ]; then export PYTHONPATH=""; fi
+
+##---------------------- MintPy -----------------------##
+export MINTPY_HOME=${TOOL_DIR}/MintPy
+export WEATHER_DIR=${DATA_DIR}/aux
+
+##---------------------- ARIA-tools -------------------##
+export ARIATOOLS_HOME=${TOOL_DIR}/ARIA-tools/tools
+
+##---------------------- SSARA ------------------------##
+export PATH=${PATH}:${TOOL_DIR}/utils/SSARA
+
+##---------------------- isce-proc --------------------##
+export ISCE_PROC_HOME=~/tools/isce-proc
+export PYTHONPATH=${PYTHONPATH}:${ISCE_PROC_HOME}/src
+export PATH=${PATH}:${ISCE_PROC_HOME}/src/isce_proc
+
+##---------------------- ISCE2 ------------------------##
+# installed from conda
+# ISCE_HOME/STACK are set by conda
+export PATH=${PATH}:${ISCE_HOME}/bin:${ISCE_HOME}/applications
+echo "load ISCE-2 core modules installed by conda-forge channel"
+
+#----------
+# source stack processors and PyCuAmpcor
+export ISCE_STACK=${TOOL_DIR}/isce2/src/isce2/contrib/stack                     # set ISCE_STACK to the dev version
+export PYTHONPATH=${PYTHONPATH}:${ISCE_STACK}                                   # import tops/stripmapStack as python modules
+export PATH=${PATH}:${TOOL_DIR}/isce2/src/isce2/contrib/PyCuAmpcor/examples     # make cuDenseOffsets executable
+export DEMDB=${DATA_DIR}/aux/DEM
+
+# source ONLY ONE AT A TIME to avoid naming conflicts
+alias load_stripmap_stack='export PATH=${PATH}:${ISCE_STACK}/stripmapStack; echo "load ISCE-2 stripmapStack from "${ISCE_STACK}/stripmapStack'
+alias load_tops_stack='export PATH=${PATH}:${ISCE_STACK}/topsStack; echo "load ISCE-2 topsStack from "${ISCE_STACK}/topsStack'
+
+##---------------------- Miscellaneous ----------------##
+export VRT_SHARED_SOURCE=0
+export HDF5_DISABLE_VERSION_CHECK=2    # 0 for abort; 1 for printout warning message; 2 for supress the warning message
+export HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=16

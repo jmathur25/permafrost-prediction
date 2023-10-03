@@ -1,0 +1,6 @@
+[submodule "dev_setup/mintpy/MintPy"]
+	path = dev_setup/mintpy/MintPy
+	url = https://github.com/insarlab/MintPy
+[submodule "dev_setup/isce2/isce2"]
+	path = dev_setup/isce2/isce2
+	url = git@github.com:isce-framework/isce2.git
