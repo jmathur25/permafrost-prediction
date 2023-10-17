@@ -59,8 +59,8 @@ def schaefer_method():
     data_specified_ignore = [21, 43, 55]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
-    start_year = 1995 #2006
-    end_year = 2013 # 2010
+    start_year = 2006
+    end_year = 2010
 
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
     norm_per_year = False  # True
@@ -70,7 +70,7 @@ def schaefer_method():
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = True # False
+    mintpy = False
     
     # If True, uses Roger/Chen redefined way to compute ADDT diff
     sqrt_ddt_correction = False
@@ -80,6 +80,11 @@ def schaefer_method():
     # Use the geo-corrected interferogram products instead of radar geometry
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
     use_geo = False
+
+    # Scale measured and estimated ALTs by the DDT at measure time (probe or SAR) to be the one at end-of-season when thaw is maximized
+    # TODO: should scaling subsidence be independent of scaling ALT? Technically we could just scale deformations
+    # to what they should be at measurement time.
+    ddt_scale = True
 
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
@@ -118,12 +123,17 @@ def schaefer_method():
     # only grab ALTs from end of summer, which willl be the last
     # measurement in a year
     df_calm["year"] = df_calm["date"].dt.year
-    df_peak_alt = df_calm.groupby(["point_id", "year"]).last()
+    df_peak_alt = df_calm.groupby(["point_id", "year"]).last().reset_index()
     df_peak_alt['month'] = df_peak_alt['date'].dt.month
     df_peak_alt['day'] = df_peak_alt['date'].dt.day
-    # df_peak_alt = pd.merge(df_peak_alt, df_temp, on=['year', 'month', 'day'], how='left')
+    df_peak_alt = pd.merge(df_peak_alt, df_temp[['norm_ddt']], on=['year', 'month', 'day'], how='left')
+    df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
+    df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
+    df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
+    if ddt_scale:
+        df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
-    df_alt_gt = df_alt_gt.drop("date", axis=1)
+    df_alt_gt = df_alt_gt.drop(["date", 'month', 'day', 'norm_ddt', 'max_yearly_ddt'], axis=1)
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     calib_subsidence = alt_to_surface_deformation(calib_alt)
