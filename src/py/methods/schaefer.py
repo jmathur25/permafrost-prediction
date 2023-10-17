@@ -59,8 +59,8 @@ def schaefer_method():
     data_specified_ignore = [21, 43, 55]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
-    start_year = 2006
-    end_year = 2010
+    start_year = 1995 #2006
+    end_year = 2013 # 2010
 
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
     norm_per_year = False  # True
@@ -81,29 +81,9 @@ def schaefer_method():
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
     use_geo = False
 
-    df_calm = pd.read_csv(calm_file, parse_dates=["date"])
-    df_calm = df_calm.sort_values("date", ascending=True)
-    df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
-    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime("1995")) & (df_calm["date"] < pd.to_datetime("2014"))]
-
-    def try_float(x):
-        try:
-            return float(x)
-        except:
-            return np.nan
-
-    # TODO: fix in processor. handle 'w'?
-    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
-    # only grab ALTs from end of summer, which willl be the last
-    # measurement in a year
-    df_calm["year"] = df_calm["date"].dt.year
-    df_peak_alt = df_calm.groupby(["point_id", "year"]).last()
-    df_alt_gt = df_peak_alt.groupby("point_id").mean()
-    df_alt_gt = df_alt_gt.drop("date", axis=1)
-
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
-    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] < end_year + 1)]
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
     df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
     df_temps = []
     for year, df_t in df_temp.groupby("year"):
@@ -120,6 +100,30 @@ def schaefer_method():
     if not norm_per_year:
         max_ddt = df_temp["ddt"].max()
         df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+
+    df_calm = pd.read_csv(calm_file, parse_dates=["date"])
+    df_calm = df_calm.sort_values("date", ascending=True)
+    df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
+    # TODO: can we just do 2006-2010? Before 1995-2013
+    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] <= pd.to_datetime(str(end_year)))]
+
+    def try_float(x):
+        try:
+            return float(x)
+        except:
+            return np.nan
+
+    # TODO: fix in processor. handle 'w'?
+    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
+    # only grab ALTs from end of summer, which willl be the last
+    # measurement in a year
+    df_calm["year"] = df_calm["date"].dt.year
+    df_peak_alt = df_calm.groupby(["point_id", "year"]).last()
+    df_peak_alt['month'] = df_peak_alt['date'].dt.month
+    df_peak_alt['day'] = df_peak_alt['date'].dt.day
+    # df_peak_alt = pd.merge(df_peak_alt, df_temp, on=['year', 'month', 'day'], how='left')
+    df_alt_gt = df_peak_alt.groupby("point_id").mean()
+    df_alt_gt = df_alt_gt.drop("date", axis=1)
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     calib_subsidence = alt_to_surface_deformation(calib_alt)
