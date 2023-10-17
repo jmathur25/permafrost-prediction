@@ -70,7 +70,10 @@ def schaefer_method():
     # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
     correct_E_per_igram = False
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = True
+    mintpy = True # False
+    
+    # If True, uses Roger/Chen redefined way to compute ADDT diff
+    sqrt_ddt_correction = False
 
     multi_threaded = True
 
@@ -134,7 +137,7 @@ def schaefer_method():
         correct_E_per_igram = False
         mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
         stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
-        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo)
+        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo, sqrt_ddt_correction)
     else:
         if multi_threaded:
             with ThreadPoolExecutor() as executor:
@@ -153,6 +156,7 @@ def schaefer_method():
                             calib_subsidence,
                             correct_E_per_igram,
                             use_geo,
+                            sqrt_ddt_correction
                         )
                     )
 
@@ -173,6 +177,7 @@ def schaefer_method():
                     calib_subsidence,
                     correct_E_per_igram,
                     use_geo,
+                    sqrt_ddt_correction,
                 )
                 lhs_all[i] = lhs
                 rhs_all[i, :] = rhs
@@ -228,10 +233,10 @@ def schaefer_method():
     np.save("alt_gt", alt_gt)
 
 
-def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo):
+def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction
     )
     return i, lhs, rhs
 
@@ -260,7 +265,7 @@ def compute_ddt_ddf(df):
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction
 ):
     n_horiz = 1
     n_vert = 1
@@ -276,7 +281,14 @@ def process_scene_pair(
     delta_t_years = (alos_d2 - alos_d1).days / 365
     norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
     norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-    sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
+    if sqrt_ddt_correction:
+        diff = norm_ddt_d2 - norm_ddt_d1
+        if diff > 0:
+            sqrt_addt_diff = np.sqrt(diff)
+        else:
+            sqrt_addt_diff = -np.sqrt(-diff)
+    else:
+        sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
     intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
@@ -343,7 +355,7 @@ def process_scene_pair(
     return lhs, rhs
 
 
-def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo):
+def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo, sqrt_ddt_correction):
     # Two sets of lat/lon, one from geom_reference (which references from radar image),
     # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
     # reading of the interferogram from the geocoded output, which now presents the data
@@ -397,7 +409,14 @@ def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_
             delta_t_years = (alos_d2 - alos_d1).days / 365
             norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
             norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-            sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
+            if sqrt_ddt_correction:
+                diff = norm_ddt_d2 - norm_ddt_d1
+                if diff > 0:
+                    sqrt_addt_diff = np.sqrt(diff)
+                else:
+                    sqrt_addt_diff = -np.sqrt(-diff)
+            else:
+                sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
             rhs_i = [delta_t_years, sqrt_addt_diff]
             rhs.append(rhs_i)
 

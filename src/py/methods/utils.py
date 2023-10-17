@@ -149,17 +149,6 @@ def compute_stats(alt_pred, alt_gt, points):
     print("FOR ENTIRE INPUT (excluding nans):")
     _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask)
 
-    indices = np.argsort(chi_stat)
-    print(f"\nFOR INPUT EXCLUDING THE WORST 3 POINTS: {points[indices[-3:]]}")
-    _print_stats(
-        alt_pred[indices][:-3],
-        alt_gt[indices][:-3],
-        diff[indices][:-3],
-        chi_stat[indices][:-3],
-        mask_is_great[indices][:-3],
-        alt_within_uncertainty_mask[indices][:-3],
-    )
-
 
 def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask):
     print("avg, std ALT pred", np.mean(alt_pred), np.std(alt_pred))
