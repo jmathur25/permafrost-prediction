@@ -64,11 +64,7 @@ def schaefer_method():
 
     # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
     norm_per_year = False  # True
-    # If False, matrix solves a delta deformation problem with respect to calibration point. A
-    # final correction is applied after solving to make the calibration point have the right subsidence.
-    # If True, matrix solves a deformation problem. The calibration point is used (with ADDT) to estimate
-    # a ground deformation offset that is then applied to make the deformation consistent with the expected deformation.
-    correct_E_per_igram = False
+    
     # Run using MintPy instead of Schaefer approach. TODO: split off
     mintpy = False
     
@@ -84,28 +80,118 @@ def schaefer_method():
     # Scale measured and estimated ALTs by the DDT at measure time (probe or SAR) to be the one at end-of-season when thaw is maximized
     # TODO: should scaling subsidence be independent of scaling ALT? Technically we could just scale deformations
     # to what they should be at measurement time.
-    ddt_scale = True
+    ddt_scale = False
 
-    df_temp = pd.read_csv(temp_file)
-    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
-    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
-    df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
-    df_temps = []
-    for year, df_t in df_temp.groupby("year"):
-        compute_ddt_ddf(df_t)
-        if norm_per_year:
-            # QUESTION: is "end of season" normalization when barrow measures or just highest
-            # DDT per year?
-            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
-            # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-            # end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
-            # df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
-        df_temps.append(df_t)
-    df_temp = pd.concat(df_temps, verify_integrity=True)
-    if not norm_per_year:
-        max_ddt = df_temp["ddt"].max()
-        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    df_temp = prepare_temp(temp_file, start_year, end_year, norm_per_year)
+    df_alt_gt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
 
+    calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
+    calib_subsidence = alt_to_surface_deformation(calib_alt)
+    # print("OVERRIDING SUB")
+    # calib_subsidence = 0.0202
+    print("CALIBRATION SUBSIDENCE:", calib_subsidence)
+
+    # RHS and LHS per-pixel of eq. 2
+    si = SCHAEFER_INTEFEROGRAMS  # SCHAEFER_INTEFEROGRAMS[0:1]
+    n = len(si)
+    lhs_all = np.zeros((n, len(df_alt_gt)))
+    rhs_all = np.zeros((n, 2))
+    if mintpy:
+        print("Running with MintPy solution")
+        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
+        stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
+        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo, sqrt_ddt_correction)
+    else:
+        if multi_threaded:
+            with ThreadPoolExecutor() as executor:
+                pbar = tqdm.tqdm(total=n)
+                futures = []
+                for i, scene_pair in enumerate(si):
+                    futures.append(
+                        executor.submit(
+                            worker,
+                            i,
+                            scene_pair,
+                            df_alt_gt,
+                            calib_point_id,
+                            df_temp,
+                            calib_subsidence,
+                            use_geo,
+                            sqrt_ddt_correction
+                        )
+                    )
+
+                for future in as_completed(futures):
+                    pbar.update(1)
+                    i, lhs, rhs = future.result()
+                    lhs_all[i] = lhs
+                    rhs_all[i, :] = rhs
+                pbar.close()
+        else:
+            for i, (scene1, scene2) in enumerate(si):
+                lhs, rhs = process_scene_pair(
+                    scene1,
+                    scene2,
+                    df_alt_gt,
+                    calib_point_id,
+                    df_temp,
+                    calib_subsidence,
+                    use_geo,
+                    sqrt_ddt_correction,
+                )
+                lhs_all[i] = lhs
+                rhs_all[i, :] = rhs
+
+    print("Solving equations")
+    rhs_pi = np.linalg.pinv(rhs_all)
+    sol = rhs_pi @ lhs_all
+
+    R = sol[0, :]
+    E = sol[1, :]
+
+    # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
+    # already is per-season with measurement time normalized to 1, and `ddt_scale`.
+    # # Scale E based on measurement DDT
+    # avg_sqrt_ddt = 0.0
+    # years = df_temp.index.get_level_values(level=0).unique()
+    # for year in years:
+    #     # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+    #     # measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
+    #     measurement_ddt = df_temp.loc[year, 12, 31]["norm_ddt"]
+    #     avg_sqrt_ddt += np.sqrt(measurement_ddt)
+    # avg_sqrt_ddt = avg_sqrt_ddt / len(years)
+    # E was formed assuming the measurement occurs at the end of the thaw season, yet
+    # in reality it did not. We scale E down by the average sqrt DDT of the measurement
+    # across the thaw seasons to get an estimate of the average E at measurement time.
+    # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
+    # E = E * avg_sqrt_ddt
+
+    idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
+    # E[idx] should be approximately 0
+    delta_E = calib_subsidence - E[idx]
+    E += delta_E
+
+    print("AVG E", np.mean(E))
+
+    alt_pred = []
+    for e, point in zip(E, df_alt_gt.index):
+        if e < 1e-3:
+            print(f"Skipping {point} due to non-positive deformation")
+            alt_pred.append(np.nan)
+            continue
+        alt = compute_alt_f_deformation(e)
+        alt_pred.append(alt)
+
+    alt_pred = np.array(alt_pred)
+    alt_gt = df_alt_gt["alt_m"].values
+    compute_stats(alt_pred, alt_gt, df_alt_gt.index)
+
+    df_alt_gt.to_csv("df_alt_gt.csv", index=True)
+    np.save("subsidence", E)
+    np.save("alt_preds", alt_pred)
+    np.save("alt_gt", alt_gt)
+
+def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
     df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
@@ -134,123 +220,35 @@ def schaefer_method():
         df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
     df_alt_gt = df_alt_gt.drop(["date", 'month', 'day', 'norm_ddt', 'max_yearly_ddt'], axis=1)
+    return df_alt_gt
 
-    calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    calib_subsidence = alt_to_surface_deformation(calib_alt)
-    # print("OVERRIDING SUB")
-    # calib_subsidence = 0.0202
-    print("CALIBRATION SUBSIDENCE:", calib_subsidence)
-
-    # RHS and LHS per-pixel of eq. 2
-    si = SCHAEFER_INTEFEROGRAMS  # SCHAEFER_INTEFEROGRAMS[0:1]
-    n = len(si)
-    lhs_all = np.zeros((n, len(df_alt_gt)))
-    rhs_all = np.zeros((n, 2))
-    if mintpy:
-        print("Running with MintPy solution")
-        correct_E_per_igram = False
-        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
-        stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
-        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo, sqrt_ddt_correction)
-    else:
-        if multi_threaded:
-            with ThreadPoolExecutor() as executor:
-                pbar = tqdm.tqdm(total=n)
-                futures = []
-                for i, scene_pair in enumerate(si):
-                    futures.append(
-                        executor.submit(
-                            worker,
-                            i,
-                            scene_pair,
-                            df_alt_gt,
-                            df_calm,
-                            calib_point_id,
-                            df_temp,
-                            calib_subsidence,
-                            correct_E_per_igram,
-                            use_geo,
-                            sqrt_ddt_correction
-                        )
-                    )
-
-                for future in as_completed(futures):
-                    pbar.update(1)
-                    i, lhs, rhs = future.result()
-                    lhs_all[i] = lhs
-                    rhs_all[i, :] = rhs
-                pbar.close()
-        else:
-            for i, (scene1, scene2) in enumerate(si):
-                lhs, rhs = process_scene_pair(
-                    scene1,
-                    scene2,
-                    df_alt_gt,
-                    calib_point_id,
-                    df_temp,
-                    calib_subsidence,
-                    correct_E_per_igram,
-                    use_geo,
-                    sqrt_ddt_correction,
-                )
-                lhs_all[i] = lhs
-                rhs_all[i, :] = rhs
-
-    print("Solving equations")
-    rhs_pi = np.linalg.pinv(rhs_all)
-    sol = rhs_pi @ lhs_all
-
-    R = sol[0, :]
-    E = sol[1, :]
-
-    if not correct_E_per_igram:
-        # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
-        # already is per-season with measurement time normalized to 1.
-        # # Scale E based on measurement DDT
-        # avg_sqrt_ddt = 0.0
-        # years = df_temp.index.get_level_values(level=0).unique()
-        # for year in years:
-        #     # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-        #     # measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
-        #     measurement_ddt = df_temp.loc[year, 12, 31]["norm_ddt"]
-        #     avg_sqrt_ddt += np.sqrt(measurement_ddt)
-        # avg_sqrt_ddt = avg_sqrt_ddt / len(years)
-        # E was formed assuming the measurement occurs at the end of the thaw season, yet
-        # in reality it did not. We scale E down by the average sqrt DDT of the measurement
-        # across the thaw seasons to get an estimate of the average E at measurement time.
-        # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
-        # E = E * avg_sqrt_ddt
-
-        idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
-        # E[idx] should be approximately 0
-        delta_E = calib_subsidence - E[idx]
-        E += delta_E
-
-        print("AVG E", np.mean(E))
-
-    alt_pred = []
-    for e, point in zip(E, df_alt_gt.index):
-        if e < 1e-3:
-            print(f"Skipping {point} due to non-positive deformation")
-            alt_pred.append(np.nan)
-            continue
-        alt = compute_alt_f_deformation(e)
-        alt_pred.append(alt)
-
-    alt_pred = np.array(alt_pred)
-    alt_gt = df_alt_gt["alt_m"].values
-    compute_stats(alt_pred, alt_gt, df_alt_gt.index)
-
-    df_alt_gt.to_csv("df_alt_gt.csv", index=True)
-    np.save("subsidence", E)
-    np.save("alt_preds", alt_pred)
-    np.save("alt_gt", alt_gt)
+def prepare_temp(temp_file, start_year, end_year, norm_per_year):
+    df_temp = pd.read_csv(temp_file)
+    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
+    df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
+    df_temps = []
+    for year, df_t in df_temp.groupby("year"):
+        compute_ddt_ddf(df_t)
+        if norm_per_year:
+            # QUESTION: is "end of season" normalization when barrow measures or just highest
+            # DDT per year?
+            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
+            # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+            # end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
+            # df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
+        df_temps.append(df_t)
+    df_temp = pd.concat(df_temps, verify_integrity=True)
+    if not norm_per_year:
+        max_ddt = df_temp["ddt"].max()
+        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    return df_temp
 
 
-def worker(i, scene_pair, df_alt_gt, df_calm, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction):
+def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction
     )
     return i, lhs, rhs
 
@@ -279,7 +277,7 @@ def compute_ddt_ddf(df):
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, correct_E_per_igram, use_geo, sqrt_ddt_correction
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction
 ):
     n_horiz = 1
     n_vert = 1
@@ -351,7 +349,6 @@ def process_scene_pair(
         point_to_pixel,
         calib_point_id,
         scaled_calib_def,
-        correct_E_per_igram,
     )
 
     lhs = []
@@ -502,7 +499,6 @@ def compute_deformation(
     point_to_pixel,
     calib_point_id,
     calib_def,
-    correct_E_per_igram,
 ):
     # TODO: incident angle per pixel
     los_def = igram_unw_delta_phase_slice / (2 * 2 * np.pi) * wavelength
@@ -511,11 +507,6 @@ def compute_deformation(
     assert row.shape == (1, 3)
     y = row[0, 1] - bbox[0][0]
     x = row[0, 2] - bbox[0][1]
-    if correct_E_per_igram:
-        # diff = ground_def[y, x] + calib_def
-        # print(f"Subtracting {diff} from ground deformation to align with calibration deformation")
-        # ground_def = ground_def - diff
-        ground_def = ground_def + calib_def
     return ground_def
 
 
