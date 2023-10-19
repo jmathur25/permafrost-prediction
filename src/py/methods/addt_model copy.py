@@ -1,67 +1,68 @@
+from datetime import datetime
 import sys
 import click
 import numpy as np
 import pandas as pd
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import prepare_calm_data, prepare_temp
+from methods.utils import compute_ddt_ddf, prepare_calm_data, prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
-
-import matplotlib.pyplot as plt
 
 from scipy.stats import pearsonr
 
 @click.command()
 def addt_method():
     calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
-    temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
-
+    def extract_month_day(row):
+        date = datetime.strptime(f"{row['YEAR']}-{row['DAY']}", '%Y-%j')
+        return date.month, date.day
+    dfs = []
+    norm_per_year = True
+    for i in range(6, 11):
+        istr = str(i).zfill(2)
+        df = pd.read_excel(f"/permafrost-prediction-shared-data/Barrow1_{istr}ave.xls")
+        assert df['MRC.2'].values[0] == '5 cm'
+        df = df.dropna(subset='YEAR')
+        df['YEAR'] = df['YEAR'].astype(int)
+        df['DAY'] = df['DAY'].astype(int)
+        df['month'], df['day'] = zip(*df.apply(extract_month_day, axis=1))
+        df = df.rename({'YEAR': 'year', 'MRC.2': 'temp_2m_c'}, axis=1)
+        compute_ddt_ddf(df)
+        cols = ['year', 'month', 'day', 'temp_2m_c', 'ddt']
+        if norm_per_year:
+            df['norm_ddt'] = df['ddt'] / df['ddt'].values[-1]
+            cols.append('norm_ddt')
+        dfs.append(df[cols])
+    df_temp = pd.concat(dfs)
+    if not norm_per_year:
+        max_ddt = df_temp["ddt"].max()
+        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    df_temp = df_temp.set_index(['year', 'month', 'day'])
+    
     paper_specified_ignore = [7, 110, 121]
     data_specified_ignore = [21, 43, 55]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
-    start_year = 1995 #2006
+    start_year = 2006
     end_year = 2010
 
-    norm_per_year = False
     ddt_scale = False
-    
-    df_temp = prepare_temp(temp_file, start_year, end_year, norm_per_year)
     df_calm = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
     
-    df_calm["root_ddt"] = np.sqrt(df_calm['ddt'].values)
-    df_calm = df_calm.groupby('year').mean()
-    
-    def print_stats(x, y, x_desc):
-        pearson_r, _ = pearsonr(x, y)
-        print(f"average yearly {x_desc} vs ALT pearson R:", pearson_r)
-        
-        plt.scatter(x, y)
-        plt.ylabel("avg yearly alt_m")
-        plt.xlabel(f"avg yearly {x_desc}")
-        plt.savefig(f"addt_corr_{x_desc}.png")
-        plt.close()
-        
-    print_stats(df_calm['ddt'].values, df_calm['alt_m'].values, "ddt")
-    print_stats(df_calm['root_ddt'].values, df_calm['alt_m'].values, "root_ddt")
-    print()
-    # alt_ratios = []
-    # ddt_ratios = []
-    # for (_, df) in df_calm.groupby('point_id'):
-    #     for i in range(len(df)):
-    #         for j in range(i + 1, len(df)):
-    #             alt1 = df['alt_m'].values[i]
-    #             alt2 = df['alt_m'].values[j]
-    #             if np.isnan(alt1) or np.isnan(alt2):
-    #                 continue
+    alt_ratios = []
+    ddt_ratios = []
+    for (_, df) in df_calm.groupby('point_id'):
+        for i in range(len(df)):
+            for j in range(i + 1, len(df)):
+                alt1 = df['alt_m'].values[i]
+                alt2 = df['alt_m'].values[j]
+                if np.isnan(alt1) or np.isnan(alt2):
+                    continue
 
-    #             ddt1 = df['ddt'].values[i]
-    #             ddt2 = df['ddt'].values[j]
+                ddt1 = df['norm_ddt'].values[i]
+                ddt2 = df['norm_ddt'].values[j]
                 
-    #             alt_ratios.append(alt2/alt1)
-    #             ddt_ratios.append(np.sqrt(ddt2/ddt1))
-                
-                # alt_ratios +=[alt1, alt2]
-                # ddt_ratios +=[ddt1, ddt2]
+                alt_ratios.append(alt2/alt1)
+                ddt_ratios.append(np.sqrt(ddt2/ddt1))
                 
     
     

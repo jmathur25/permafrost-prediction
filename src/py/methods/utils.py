@@ -198,7 +198,7 @@ def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_sca
     df_peak_alt = df_calm.groupby(["point_id", "year"]).last().reset_index()
     df_peak_alt['month'] = df_peak_alt['date'].dt.month
     df_peak_alt['day'] = df_peak_alt['date'].dt.day
-    df_peak_alt = pd.merge(df_peak_alt, df_temp[['norm_ddt']], on=['year', 'month', 'day'], how='left')
+    df_peak_alt = pd.merge(df_peak_alt, df_temp[['ddt', 'norm_ddt']], on=['year', 'month', 'day'], how='left')
     df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
     df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
     df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')

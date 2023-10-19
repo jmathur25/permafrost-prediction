@@ -1,8 +1,10 @@
+import sys
 import click
 import numpy as np
 import pandas as pd
 import tqdm
 
+sys.path.append("/permafrost-prediction/src/py")
 from data.consts import TEMP_DATA_DIR
 
 
@@ -13,12 +15,27 @@ URL = "https://gml.noaa.gov/aftp/data/meteorology/in-situ/brw/met_brw_insitu_1_o
 @click.argument("start_year", type=int)
 @click.argument("end_year", type=int)
 def download_barrow_temp_for_year(start_year, end_year):
-    dfs = []
-    for year in range(start_year, end_year + 1):
+    _download_barrow_temp_for_year(start_year, end_year)
+    
+def _download_barrow_temp_for_year(start_year, end_year):
+    savepath = TEMP_DATA_DIR / "barrow/data/data.csv"
+    years_to_download = set(range(start_year, end_year + 1))
+    if savepath.exists():
+        cur_df = pd.read_csv(savepath)
+        downloaded_years = pd.unique(cur_df['year'])
+        print(f"Already downloaded years: {downloaded_years}")
+        years_to_download = years_to_download - set(downloaded_years)
+    else:
+        cur_df = pd.DataFrame()
+    
+    print(f"Downloading data for the following years: {years_to_download}")
+
+    dfs = [cur_df]
+    for year in years_to_download:
         df_avg = download_year(year)
         dfs.append(df_avg)
     df = pd.concat(dfs, ignore_index=True, verify_integrity=True)
-    savepath = TEMP_DATA_DIR / "barrow/data/data.csv"
+    df = df.sort_values(by=['year', 'month', 'day'])
     print(f"Saving daily temperature data to: {savepath}")
     savepath.parent.mkdir(exist_ok=True, parents=True)
     df.to_csv(savepath, index=False)
@@ -59,4 +76,5 @@ def download_year(year):
 
 
 if __name__ == '__main__':
-    download_barrow_temp_for_year()
+    # download_barrow_temp_for_year()
+    _download_barrow_temp_for_year(1995, 2010)

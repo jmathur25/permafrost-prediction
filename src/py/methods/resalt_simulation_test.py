@@ -83,6 +83,7 @@ def print_stats(R_pred, R, E_Pred, E, desc):
     print(f"For {desc}, R abs err: {R_abs_err}, R rel err: {R_rel_err}, E abs err: {E_abs_err}, E rel err: {E_rel_err}")
 
 
+# TODO: merge with schaefer?
 def solve_resalt(subsidence_per_year, ddt_per_year, years, igrams, norm_per_year: bool):
     if norm_per_year:
         ddt_per_year = [dpy / dpy[-1] for dpy in ddt_per_year]
