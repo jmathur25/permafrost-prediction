@@ -5,6 +5,7 @@ from haversine import haversine
 from isce.components import isceobj
 import numpy as np
 from osgeo import gdal
+import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from scipy.spatial import KDTree
@@ -175,3 +176,75 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
+
+def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
+    df_calm = pd.read_csv(calm_file, parse_dates=["date"])
+    df_calm = df_calm.sort_values("date", ascending=True)
+    df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
+    # TODO: can we just do 2006-2010? Before 1995-2013
+    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] <= pd.to_datetime(str(end_year)))]
+
+    def try_float(x):
+        try:
+            return float(x)
+        except:
+            return np.nan
+
+    # TODO: fix in processor. handle 'w'?
+    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
+    # only grab ALTs from end of summer, which willl be the last
+    # measurement in a year
+    df_calm["year"] = df_calm["date"].dt.year
+    df_peak_alt = df_calm.groupby(["point_id", "year"]).last().reset_index()
+    df_peak_alt['month'] = df_peak_alt['date'].dt.month
+    df_peak_alt['day'] = df_peak_alt['date'].dt.day
+    df_peak_alt = pd.merge(df_peak_alt, df_temp[['norm_ddt']], on=['year', 'month', 'day'], how='left')
+    df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
+    df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
+    df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
+    if ddt_scale:
+        df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
+    return df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
+
+def prepare_temp(temp_file, start_year, end_year, norm_per_year):
+    df_temp = pd.read_csv(temp_file)
+    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
+    df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
+    df_temps = []
+    for year, df_t in df_temp.groupby("year"):
+        compute_ddt_ddf(df_t)
+        if norm_per_year:
+            # QUESTION: is "end of season" normalization when barrow measures or just highest DDT per year?
+            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
+            # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
+            # end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
+            # df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
+        df_temps.append(df_t)
+    df_temp = pd.concat(df_temps, verify_integrity=True)
+    if not norm_per_year:
+        max_ddt = df_temp["ddt"].max()
+        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    return df_temp
+
+def compute_ddt_ddf(df):
+    tmp_col = "temp_2m_c"
+    freezing_point = 0.0
+    # Initialize counters
+    ddf = 0
+    ddt = 0
+    ddf_list = []
+    ddt_list = []
+
+    # Iterate over the temp_2m_c column
+    for i, temp in enumerate(df[tmp_col]):
+        if not np.isnan(temp):
+            if temp < freezing_point:
+                ddf += temp
+            else:
+                ddt += temp
+        ddf_list.append(ddf)
+        ddt_list.append(ddt)
+
+    df["ddf"] = ddf_list
+    df["ddt"] = ddt_list
