@@ -4,12 +4,16 @@ import numpy as np
 import pandas as pd
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import prepare_calm_data, prepare_temp
+from methods.utils import compute_stats, prepare_calm_data, prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 
 import matplotlib.pyplot as plt
 
 from scipy.stats import pearsonr
+
+import logging
+
+logging.getLogger().setLevel(logging.INFO)
 
 @click.command()
 def addt_method():
@@ -31,15 +35,15 @@ def addt_method():
     # df_calm["root_ddt"] = np.sqrt(df_calm['ddt'].values)
     # df_calm = df_calm.groupby('year').mean()
     
-    # def print_stats(x, y, x_desc):
-    #     pearson_r, _ = pearsonr(x, y)
-    #     print(f"average yearly {x_desc} vs ALT pearson R:", pearson_r)
+    def print_stats(x, y, x_desc):
+        pearson_r, _ = pearsonr(x, y)
+        print(f"average yearly {x_desc} vs ALT pearson R:", pearson_r)
         
-    #     plt.scatter(x, y)
-    #     plt.ylabel("avg yearly alt_m")
-    #     plt.xlabel(f"avg yearly {x_desc}")
-    #     plt.savefig(f"addt_corr_{x_desc}.png")
-    #     plt.close()
+        plt.scatter(x, y)
+        plt.ylabel("avg yearly alt_m")
+        plt.xlabel(f"avg yearly {x_desc}")
+        plt.savefig(f"addt_corr_{x_desc}.png")
+        plt.close()
         
     # print_stats(df_calm['ddt'].values, df_calm['alt_m'].values, "ddt")
     # print_stats(df_calm['root_ddt'].values, df_calm['alt_m'].values, "root_ddt")
@@ -72,21 +76,36 @@ def addt_method():
     df_calm = df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
     
     df_calm["root_ddt"] = np.sqrt(df_calm['ddt'].values)
-    df_calm = df_calm.groupby(['year', 'month']).mean()
+    # df_calm = df_calm.groupby(['year', 'month']).mean()
+    df_calm = df_calm[df_calm['month'] == 8]
+    df_calm = df_calm.dropna(subset='alt_m')
     
-    def print_stats(x, y, x_desc):
-        pearson_r, _ = pearsonr(x, y)
-        print(f"average yearly {x_desc} vs ALT pearson R:", pearson_r)
-        
-        plt.scatter(x, y)
-        plt.ylabel("avg yearly alt_m")
-        plt.xlabel(f"avg yearly {x_desc}")
-        plt.savefig(f"addt_corr_{x_desc}.png")
-        plt.close()
-        
     print_stats(df_calm['ddt'].values, df_calm['alt_m'].values, "ddt")
     print_stats(df_calm['root_ddt'].values, df_calm['alt_m'].values, "root_ddt")
     print()
+    
+    x = df_calm['root_ddt'].values
+    y = df_calm['alt_m'].values
+    frac_fit = 0.2
+    selected_indices = np.random.choice(x.size, size=int(frac_fit * x.size), replace=False)
+    mask = np.zeros_like(df_calm['ddt'].values, dtype=bool)
+    mask[selected_indices] = True
+    
+    x_train = x[mask]
+    y_train = y[mask]
+    
+    x_val = x[~mask]
+    y_val = y[~mask]
+    
+    # no bias
+    x_inv = np.linalg.pinv(x_train[:,None])
+    sol = x_inv @ y_train
+    
+    y_train_pred = x_train * sol
+    compute_stats(y_train_pred, y_train)
+    
+    y_val_pred = x_val * sol
+    compute_stats(y_val_pred, y_val)
     
     # alt_ratios = []
     # ddt_ratios = []
@@ -146,8 +165,8 @@ def addt_method():
     #     x.append(last_alt - first_alt)
     #     y.append(last_ddt - first_ddt)
     
-    pearson_r, _ = pearsonr(alt_ratios, ddt_ratios)
-    print("CORR COEF", pearson_r)
+    # pearson_r, _ = pearsonr(alt_ratios, ddt_ratios)
+    # print("CORR COEF", pearson_r)
     
     
 

@@ -37,7 +37,7 @@ SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP081662170", "ALPSRP182312170"),
     # ("ALPSRP081662170", "ALPSRP128632170"), # dup 10
     ("ALPSRP081662170", "ALPSRP189022170"),  # fix
-    ("ALPSRP081662170", "ALPSRP189022170"),
+    # ("ALPSRP081662170", "ALPSRP235992170"),  # fix incorrect listing of palsar for '20100629' row 14. TODO: actually process this.
     ("ALPSRP081662170", "ALPSRP242702170"),
     ("ALPSRP128632170", "ALPSRP182312170"),
     ("ALPSRP128632170", "ALPSRP189022170"),
@@ -45,7 +45,6 @@ SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP189022170", "ALPSRP235992170"),
     # ("ALPSRP235992170", "ALPSRP242702170"), # processing error
 ]
-
 
 @click.command()
 def schaefer_method():
@@ -118,7 +117,6 @@ def schaefer_method():
                             df_alt_gt,
                             calib_point_id,
                             df_temp,
-                            calib_subsidence,
                             use_geo,
                             sqrt_ddt_correction
                         )
@@ -138,7 +136,6 @@ def schaefer_method():
                     df_alt_gt,
                     calib_point_id,
                     df_temp,
-                    calib_subsidence,
                     use_geo,
                     sqrt_ddt_correction,
                 )
@@ -187,24 +184,24 @@ def schaefer_method():
 
     alt_pred = np.array(alt_pred)
     alt_gt = df_alt_gt["alt_m"].values
-    compute_stats(alt_pred, alt_gt, df_alt_gt.index)
+    compute_stats(alt_pred, alt_gt)
 
-    df_alt_gt.to_csv("df_alt_gt.csv", index=True)
-    np.save("subsidence", E)
-    np.save("alt_preds", alt_pred)
-    np.save("alt_gt", alt_gt)
+    # df_alt_gt.to_csv("df_alt_gt.csv", index=True)
+    # np.save("subsidence", E)
+    # np.save("alt_preds", alt_pred)
+    # np.save("alt_gt", alt_gt)
 
 
-def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction):
+def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction
     )
     return i, lhs, rhs
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, calib_subsidence, use_geo, sqrt_ddt_correction
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction
 ):
     n_horiz = 1
     n_vert = 1
@@ -230,6 +227,23 @@ def process_scene_pair(
         sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
+    point_to_pixel, bbox, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir)
+
+    lhs = []
+    n_over_2_vert = n_vert // 2
+    extra_vert = n_vert % 2
+    n_over_2_horiz = n_horiz // 2
+    extra_horiz = n_horiz % 2
+    for _, y, x in point_to_pixel:
+        y -= bbox[0][0]
+        x -= bbox[0][1]
+        igram_slice = igram_def[
+            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
+        ]
+        lhs.append(igram_slice.mean())
+    return lhs, rhs
+
+def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir):
     intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
     if use_geo:
         intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
@@ -267,30 +281,13 @@ def process_scene_pair(
 
     igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert)
 
-    scaled_calib_def = calib_subsidence * sqrt_addt_diff
     igram_def = compute_deformation(
         igram_unw_phase_slice,
-        bbox,
         incidence_angle,
         radar_wavelength,
-        point_to_pixel,
-        calib_point_id,
-        scaled_calib_def,
     )
-
-    lhs = []
-    n_over_2_vert = n_vert // 2
-    extra_vert = n_vert % 2
-    n_over_2_horiz = n_horiz // 2
-    extra_horiz = n_horiz % 2
-    for _, y, x in point_to_pixel:
-        y -= bbox[0][0]
-        x -= bbox[0][1]
-        igram_slice = igram_def[
-            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
-        ]
-        lhs.append(igram_slice.mean())
-    return lhs, rhs
+    
+    return point_to_pixel,bbox,igram_def,lat_lon
 
 
 def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo, sqrt_ddt_correction):
@@ -402,38 +399,31 @@ def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n
     # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
     # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
     igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
-    # Use phase-differences wrt to reference pixel
-    row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
-    assert row.shape == (1, 3)
-    y = row[0, 1] - bbox[0][0]
-    x = row[0, 2] - bbox[0][1]
-    n_over_2_vert = n_vert // 2
-    extra_vert = n_vert % 2
-    n_over_2_horiz = n_horiz // 2
-    extra_horiz = n_horiz % 2
-    calib_phase_slice = igram_unw_phase_slice[
-        y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
-    ]
-    igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
+    if calib_point_id is not None:
+        # Use phase-differences wrt to reference pixel
+        row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
+        assert row.shape == (1, 3)
+        y = row[0, 1] - bbox[0][0]
+        x = row[0, 2] - bbox[0][1]
+        n_over_2_vert = n_vert // 2
+        extra_vert = n_vert % 2
+        n_over_2_horiz = n_horiz // 2
+        extra_horiz = n_horiz % 2
+        calib_phase_slice = igram_unw_phase_slice[
+            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
+        ]
+        igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
     return igram_unw_phase_slice
 
 
 def compute_deformation(
     igram_unw_delta_phase_slice,
-    bbox,
     incidence_angle,
     wavelength,
-    point_to_pixel,
-    calib_point_id,
-    calib_def,
 ):
     # TODO: incident angle per pixel
     los_def = igram_unw_delta_phase_slice / (2 * 2 * np.pi) * wavelength
     ground_def = los_def / np.cos(incidence_angle)
-    row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
-    assert row.shape == (1, 3)
-    y = row[0, 1] - bbox[0][0]
-    x = row[0, 2] - bbox[0][1]
     return ground_def
 
 

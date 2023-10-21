@@ -1,0 +1,70 @@
+# %%
+%load_ext autoreload
+%autoreload 2
+
+# %%
+import sys
+
+import pandas as pd
+
+
+sys.path.append("..")
+from data.utils import get_date_for_alos
+from data.consts import ISCE2_OUTPUTS_DIR
+from methods.schaefer import SCHAEFER_INTEFEROGRAMS, plot_change, process_igram
+
+# %%
+df_liu_sub_gt = pd.read_csv("/permafrost-prediction-shared-data/Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
+df_liu_sub_gt['year'] = df_liu_sub_gt['Date/Time'].dt.year
+df_liu_sub_gt['month'] = df_liu_sub_gt['Date/Time'].dt.month
+df_liu_sub_gt['day'] = df_liu_sub_gt['Date/Time'].dt.day
+df_liu_sub_gt = df_liu_sub_gt.set_index(['year', 'month', 'day'])
+
+# %%
+def get_ec(alos_date, df):
+    try:
+        row = df.loc[alos_date.year, alos_date.month, alos_date.day]
+    except:
+        return None
+    return row['Elev change [cm]']
+
+# %%
+usable_igrams = []
+for (alos1, alos2) in SCHAEFER_INTEFEROGRAMS:
+    _, alos_d1 = get_date_for_alos(alos1)
+    _, alos_d2 = get_date_for_alos(alos2)
+    ec1 = get_ec(alos_d1, df_liu_sub_gt)
+    ec2 = get_ec(alos_d2, df_liu_sub_gt)
+    if ec1 is not None and ec2 is not None:
+        usable_igrams.append((alos1, alos2))
+
+print(usable_igrams)
+    
+
+# %%
+df_gt_sub_locs = pd.DataFrame.from_records({
+    'point_id': [0],
+    'latitude': [71.323000],
+    'longitude': [-156.610000],
+})
+n_horiz = 1
+n_vert = 1
+use_geo = False
+
+idx = 1
+alos1 = usable_igrams[idx][0]
+alos2 = usable_igrams[idx][1]
+isce_output_dir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
+
+_, alos_d1 = get_date_for_alos(alos1)
+_, alos_d2 = get_date_for_alos(alos2)
+print("Looking at", alos_d1, alos_d2)
+
+point_to_pixel, bbox, igram_def, lat_lon = process_igram(df_gt_sub_locs, None, use_geo, n_horiz, n_vert, isce_output_dir)
+
+sub_expected = get_ec(alos_d2, df_liu_sub_gt) - get_ec(alos_d1, df_liu_sub_gt)
+sub_actual = igram_def[point_to_pixel[0,1] - bbox[0][0], point_to_pixel[0,2] - bbox[0][1]]
+print("Sub expected:", sub_expected, "Sub actual:", sub_actual)
+
+
+# %%

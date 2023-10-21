@@ -123,12 +123,14 @@ class LatLonArray(LatLon):
         self.kd_tree = KDTree(self.flattened_coordinates)
 
     def find_closest_pixel(self, lat, lon):
-        _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        dist, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        # TODO: implement proper distance checking
+        assert dist < 1e-3
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
         return closest_pixel_idx
 
 
-def compute_stats(alt_pred, alt_gt, points):
+def compute_stats(alt_pred, alt_gt):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
@@ -176,8 +178,8 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
-
-def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
+    
+def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
     df_calm = df_calm.sort_values("date", ascending=True)
     df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
@@ -192,12 +194,16 @@ def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_sca
 
     # TODO: fix in processor. handle 'w'?
     df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
-    # only grab ALTs from end of summer, which willl be the last
+    # only grab ALTs from end of summer, which will be the last
     # measurement in a year
     df_calm["year"] = df_calm["date"].dt.year
     df_peak_alt = df_calm.groupby(["point_id", "year"]).last().reset_index()
     df_peak_alt['month'] = df_peak_alt['date'].dt.month
     df_peak_alt['day'] = df_peak_alt['date'].dt.day
+    return df_peak_alt 
+
+def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
+    df_peak_alt = load_calm_data(calm_file, ignore_point_ids, start_year, end_year)
     df_peak_alt = pd.merge(df_peak_alt, df_temp[['ddt', 'norm_ddt']], on=['year', 'month', 'day'], how='left')
     df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
     df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
@@ -224,7 +230,9 @@ def prepare_temp(temp_file, start_year, end_year, norm_per_year):
     df_temp = pd.concat(df_temps, verify_integrity=True)
     if not norm_per_year:
         max_ddt = df_temp["ddt"].max()
+        # max_ddt = 15**2
         df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+        # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
     return df_temp
 
 def compute_ddt_ddf(df):
