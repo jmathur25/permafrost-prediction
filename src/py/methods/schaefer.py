@@ -66,7 +66,7 @@ def schaefer_method():
     norm_per_year = False  # True
     
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = False
+    mintpy = True
     
     # If True, uses Roger/Chen redefined way to compute ADDT diff
     sqrt_ddt_correction = False
@@ -291,6 +291,35 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
 
 
 def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo, sqrt_ddt_correction):
+    dates, ground_def = get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo)
+    lhs = []
+    rhs = []
+    for i in range(len(dates)):
+        for j in range(i + 1, len(dates)):
+            alos_d1 = dates[i]
+            alos_d2 = dates[j]
+            delta_t_years = (alos_d2 - alos_d1).days / 365
+            norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
+            norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
+            if sqrt_ddt_correction:
+                diff = norm_ddt_d2 - norm_ddt_d1
+                if diff > 0:
+                    sqrt_addt_diff = np.sqrt(diff)
+                else:
+                    sqrt_addt_diff = -np.sqrt(-diff)
+            else:
+                sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
+            rhs_i = [delta_t_years, sqrt_addt_diff]
+            rhs.append(rhs_i)
+
+            pixel_diff = ground_def[j] - ground_def[i]
+            lhs.append(pixel_diff)
+    lhs = np.stack(lhs)
+    rhs = np.array(rhs)
+    return lhs, rhs
+
+
+def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo):
     # Two sets of lat/lon, one from geom_reference (which references from radar image),
     # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
     # reading of the interferogram from the geocoded output, which now presents the data
@@ -314,6 +343,9 @@ def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_
         f = h5py.File(mintpy_outputs_dir / "timeseries_tropHgt_demErr.h5", "r")
         los_def = f["timeseries"][()]
         dates = f["date"][()]
+        
+    dates = [datetime.datetime.strptime(d.decode("utf-8"), "%Y%m%d")
+            for d in dates]
 
     point_to_pixel_inc = []
     point_to_pixel_intfg = []
@@ -334,32 +366,8 @@ def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_
         incidence_angle = inc[py_inc, px_inc] * np.pi / 180
         ground_def.append(los_def[:, py_intfg, px_intfg] / np.cos(incidence_angle))
     ground_def = np.stack(ground_def).transpose(1, 0)
-
-    lhs = []
-    rhs = []
-    for i in range(len(dates)):
-        for j in range(i + 1, len(dates)):
-            alos_d1 = datetime.datetime.strptime(dates[i].decode("utf-8"), "%Y%m%d")
-            alos_d2 = datetime.datetime.strptime(dates[j].decode("utf-8"), "%Y%m%d")
-            delta_t_years = (alos_d2 - alos_d1).days / 365
-            norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
-            norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-            if sqrt_ddt_correction:
-                diff = norm_ddt_d2 - norm_ddt_d1
-                if diff > 0:
-                    sqrt_addt_diff = np.sqrt(diff)
-                else:
-                    sqrt_addt_diff = -np.sqrt(-diff)
-            else:
-                sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
-            rhs_i = [delta_t_years, sqrt_addt_diff]
-            rhs.append(rhs_i)
-
-            pixel_diff = ground_def[j] - ground_def[i]
-            lhs.append(pixel_diff)
-    lhs = np.stack(lhs)
-    rhs = np.array(rhs)
-    return lhs, rhs
+    
+    return dates, ground_def
 
 
 def get_norm_ddt(df_temp, date):
