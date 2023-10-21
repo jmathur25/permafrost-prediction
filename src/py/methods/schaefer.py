@@ -94,7 +94,7 @@ def schaefer_method():
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
 
     # RHS and LHS per-pixel of eq. 2
-    si = SCHAEFER_INTEFEROGRAMS  # SCHAEFER_INTEFEROGRAMS[0:1]
+    si = SCHAEFER_INTEFEROGRAMS
     n = len(si)
     lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
