@@ -66,7 +66,7 @@ def schaefer_method():
     norm_per_year = False  # True
     
     # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = True
+    mintpy = False
     
     # If True, uses Roger/Chen redefined way to compute ADDT diff
     sqrt_ddt_correction = False
@@ -149,8 +149,8 @@ def schaefer_method():
     R = sol[0, :]
     E = sol[1, :]
 
-    # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
-    # already is per-season with measurement time normalized to 1, and `ddt_scale`.
+    # # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
+    # # already is per-season with measurement time normalized to 1, and `ddt_scale`.
     # # Scale E based on measurement DDT
     # avg_sqrt_ddt = 0.0
     # years = df_temp.index.get_level_values(level=0).unique()
@@ -160,10 +160,10 @@ def schaefer_method():
     #     measurement_ddt = df_temp.loc[year, 12, 31]["norm_ddt"]
     #     avg_sqrt_ddt += np.sqrt(measurement_ddt)
     # avg_sqrt_ddt = avg_sqrt_ddt / len(years)
-    # E was formed assuming the measurement occurs at the end of the thaw season, yet
-    # in reality it did not. We scale E down by the average sqrt DDT of the measurement
-    # across the thaw seasons to get an estimate of the average E at measurement time.
-    # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
+    # # E was formed assuming the measurement occurs at the end of the thaw season, yet
+    # # in reality it did not. We scale E down by the average sqrt DDT of the measurement
+    # # across the thaw seasons to get an estimate of the average E at measurement time.
+    # # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
     # E = E * avg_sqrt_ddt
 
     idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
@@ -249,6 +249,7 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
         intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
     ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
     igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
+    
     # print("USING WRAPPED PHASE")
     # intfg_unw_file = isce_output_dir / 'interferogram/filt_topophase.flat'
     # ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
@@ -280,7 +281,10 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     print(f"Bounding box set to: {bbox}")
 
     igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert)
+    
+    # print("MAX PHASE, MIN PHASE", igram_unw_phase_slice.max(), igram_unw_phase_slice.min())
 
+    print("RAD CONVERT")
     igram_def = compute_deformation(
         igram_unw_phase_slice,
         incidence_angle,

@@ -230,6 +230,7 @@ def prepare_temp(temp_file, start_year, end_year, norm_per_year):
     df_temp = pd.concat(df_temps, verify_integrity=True)
     if not norm_per_year:
         max_ddt = df_temp["ddt"].max()
+        # print("overring max ddt")
         # max_ddt = 15**2
         df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
         # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
