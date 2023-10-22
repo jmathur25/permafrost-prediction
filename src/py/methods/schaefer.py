@@ -172,13 +172,13 @@ def schaefer_method():
 def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction):
     scene1, scene2 = scene_pair
     lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction
+        scene1, scene2, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, True
     )
     return i, lhs, rhs
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, needs_sign_flip,
 ):
     n_horiz = 1
     n_vert = 1
@@ -204,7 +204,7 @@ def process_scene_pair(
         sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
     rhs = [delta_t_years, sqrt_addt_diff]
 
-    point_to_pixel, bbox, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir)
+    point_to_pixel, bbox, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip)
 
     lhs = []
     n_over_2_vert = n_vert // 2
@@ -220,7 +220,7 @@ def process_scene_pair(
         lhs.append(igram_slice.mean())
     return lhs, rhs
 
-def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir):
+def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip):
     intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
     if use_geo:
         intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
@@ -257,7 +257,7 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
     print(f"Bounding box set to: {bbox}")
 
-    igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert)
+    igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip)
     
     # print("MAX PHASE, MIN PHASE", igram_unw_phase_slice.max(), igram_unw_phase_slice.min())
 
@@ -379,7 +379,9 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.show()
 
 
-def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert):
+def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip):
+    igram_unw_phase_slice = igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
+    if needs_sign_flip:
     # negative because all inteferograms were computed with granule 1 as the reference
     # and granule 2 as the secondary. This means the phase difference is granule 1 - granule 2.
     # However, the RHS is constructed as data at time of granule 2 - data at time of granule 1.
@@ -387,7 +389,7 @@ def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n
     # 1. RHS (time difference and sqrt ADDT diff), which would be those values in Aug - those values in June
     # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
     # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
-    igram_unw_phase_slice = -igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
+        igram_unw_phase_slice = -igram_unw_phase_slice
     if calib_point_id is not None:
         # Use phase-differences wrt to reference pixel
         row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]

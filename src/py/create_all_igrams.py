@@ -20,6 +20,8 @@ for alos1, alos2 in igrams:
         print("SKIPPING", alos1, alos2)
     else:
         igrams_to_do.append((alos1, alos2))
+igrams_to_do = JATIN_SINGLE_SEASON_2006_IGRAMS
+assert len(igrams_to_do) > 0
 
 
 def worker(args):

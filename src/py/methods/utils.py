@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import pathlib
-from haversine import haversine
+from haversine import haversine, Unit
 from isce.components import isceobj
 import numpy as np
 from osgeo import gdal
@@ -122,11 +122,12 @@ class LatLonArray(LatLon):
         self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
         self.kd_tree = KDTree(self.flattened_coordinates)
 
-    def find_closest_pixel(self, lat, lon):
-        dist, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
-        # TODO: implement proper distance checking
-        assert dist < 1e-3
+    def find_closest_pixel(self, lat, lon, max_dist_meters=35):
+        _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
+        # TODO: implement proper distance checking
+        dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
+        assert dist < max_dist_meters
         return closest_pixel_idx
 
 
@@ -184,7 +185,8 @@ def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     df_calm = df_calm.sort_values("date", ascending=True)
     df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
     # TODO: can we just do 2006-2010? Before 1995-2013
-    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] <= pd.to_datetime(str(end_year)))]
+    # pandas version 2.1.1 has a bug where <= is not-inclusive. So we do: < pd.to_datetime(str(end_year + 1)
+    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] < pd.to_datetime(str(end_year + 1)))]
 
     def try_float(x):
         try:
