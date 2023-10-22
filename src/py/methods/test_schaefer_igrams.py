@@ -3,7 +3,7 @@ from datetime import datetime
 import sys
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.schaefer import SCHAEFER_INTEFEROGRAMS
+from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from data.utils import get_date_for_alos
 
 

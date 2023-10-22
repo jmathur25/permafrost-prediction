@@ -13,38 +13,15 @@ import h5py
 import tqdm
 import sys
 
+
 # TODO: fix module-ing
 sys.path.append("/permafrost-prediction/src/py")
+from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from methods.utils import LatLonFile, compute_stats, prepare_calm_data, prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-SCHAEFER_INTEFEROGRAMS = [
-    ("ALPSRP021272170", "ALPSRP027982170"),
-    ("ALPSRP021272170", "ALPSRP128632170"),
-    ("ALPSRP021272170", "ALPSRP182312170"),
-    ("ALPSRP021272170", "ALPSRP189022170"),
-    ("ALPSRP027982170", "ALPSRP182312170"),
-    ("ALPSRP074952170", "ALPSRP081662170"),
-    ("ALPSRP074952170", "ALPSRP128632170"),
-    ("ALPSRP074952170", "ALPSRP182312170"),
-    # ("ALPSRP074952170", "ALPSRP128632170"), # dup 6
-    ("ALPSRP074952170", "ALPSRP189022170"),  # fix
-    ("ALPSRP074952170", "ALPSRP235992170"),
-    ("ALPSRP081662170", "ALPSRP128632170"),
-    ("ALPSRP081662170", "ALPSRP182312170"),
-    # ("ALPSRP081662170", "ALPSRP128632170"), # dup 10
-    ("ALPSRP081662170", "ALPSRP189022170"),  # fix
-    # ("ALPSRP081662170", "ALPSRP235992170"),  # fix incorrect listing of palsar for '20100629' row 14. TODO: actually process this.
-    ("ALPSRP081662170", "ALPSRP242702170"),
-    ("ALPSRP128632170", "ALPSRP182312170"),
-    ("ALPSRP128632170", "ALPSRP189022170"),
-    ("ALPSRP182312170", "ALPSRP189022170"),
-    ("ALPSRP189022170", "ALPSRP235992170"),
-    # ("ALPSRP235992170", "ALPSRP242702170"), # processing error
-]
 
 @click.command()
 def schaefer_method():

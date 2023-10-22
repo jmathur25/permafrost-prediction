@@ -14,7 +14,7 @@ from scipy.stats import pearsonr
 sys.path.append("..")
 from data.utils import get_date_for_alos
 from data.consts import DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR
-from methods.schaefer import SCHAEFER_INTEFEROGRAMS, get_mintpy_deformation_timeseries, plot_change, process_igram
+from methods.igrams import SCHAEFER_INTEFEROGRAMS, get_mintpy_deformation_timeseries, plot_change, process_igram
 
 # %%
 df_liu_sub_gt = pd.read_csv("/permafrost-prediction-shared-data/Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])

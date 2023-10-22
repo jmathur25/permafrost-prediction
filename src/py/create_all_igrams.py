@@ -1,37 +1,18 @@
+import multiprocessing
+import os
+import pathlib
+import shutil
+import sys
 from methods.create_alos_interferogram import process_alos
 from data.consts import ISCE2_OUTPUTS_DIR
+from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS, SCHAEFER_INTEFEROGRAMS
 
+igrams = JATIN_SINGLE_SEASON_2006_IGRAMS
 
-igrams = [
-    ("ALPSRP021272170", "ALPSRP027982170"),
-    ("ALPSRP021272170", "ALPSRP128632170"),
-    ("ALPSRP021272170", "ALPSRP182312170"),
-    ("ALPSRP021272170", "ALPSRP189022170"),
-    ("ALPSRP027982170", "ALPSRP182312170"),
-    ("ALPSRP074952170", "ALPSRP081662170"),
-    ("ALPSRP074952170", "ALPSRP128632170"),
-    ("ALPSRP074952170", "ALPSRP182312170"),
-    # ("ALPSRP074952170", "ALPSRP128632170"), # dup 6
-    ("ALPSRP074952170", "ALPSRP189022170"),  # fix
-    ("ALPSRP074952170", "ALPSRP235992170"),
-    ("ALPSRP081662170", "ALPSRP128632170"),
-    ("ALPSRP081662170", "ALPSRP182312170"),
-    # ("ALPSRP081662170", "ALPSRP128632170"), # dup 10
-    ("ALPSRP081662170", "ALPSRP189022170"),  # fix
-    ("ALPSRP081662170", "ALPSRP189022170"),
-    ("ALPSRP081662170", "ALPSRP242702170"),
-    ("ALPSRP128632170", "ALPSRP182312170"),
-    ("ALPSRP128632170", "ALPSRP189022170"),
-    ("ALPSRP182312170", "ALPSRP189022170"),
-    ("ALPSRP189022170", "ALPSRP235992170"),
-    ("ALPSRP235992170", "ALPSRP242702170"),
-]
+# ensure no dups
+assert len(set(igrams)) == len(igrams)
 
-for i in range(len(igrams)):
-    for j in range(i + 1, len(igrams)):
-        if igrams[i] == igrams[j]:
-            print(f"DUP AT {i} {j}")
-
+# TODO: parallelize
 igrams_to_do = []
 for alos1, alos2 in igrams:
     savedir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
@@ -40,5 +21,18 @@ for alos1, alos2 in igrams:
     else:
         igrams_to_do.append((alos1, alos2))
 
-for alos1, alos2 in igrams_to_do:
+
+def worker(args):
+    alos1, alos2 = args
+    log_file = pathlib.Path(f"log_{alos1}_{alos2}.txt")
+    # Redirect stdout to the log file
+    fd = os.open(log_file, os.O_RDWR | os.O_CREAT)
+    os.dup2(fd, 1)
+    os.dup2(fd, 2)
     process_alos(alos1, alos2)
+    
+print("STARTING PROCS...")
+num_processes = min(len(igrams_to_do), 24)
+with multiprocessing.Pool(num_processes) as pool:
+    pool.map(worker, igrams_to_do)
+print("DONE")
