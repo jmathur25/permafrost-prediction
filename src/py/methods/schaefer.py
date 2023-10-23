@@ -115,6 +115,7 @@ def schaefer_method():
                     df_temp,
                     use_geo,
                     sqrt_ddt_correction,
+                    True
                 )
                 lhs_all[i] = lhs
                 rhs_all[i, :] = rhs
@@ -191,18 +192,22 @@ def process_scene_pair(
     _, alos_d1 = get_date_for_alos(alos1)
     _, alos_d2 = get_date_for_alos(alos2)
     print(f"Processing {alos1} on {alos_d1} and {alos2} on {alos_d2}")
-    delta_t_years = (alos_d2 - alos_d1).days / 365
-    norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
+    delta_t_years = (alos_d1 - alos_d2).days / 365
     norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
+    norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
     if sqrt_ddt_correction:
-        diff = norm_ddt_d2 - norm_ddt_d1
+        diff = norm_ddt_d1 - norm_ddt_d2
         if diff > 0:
             sqrt_addt_diff = np.sqrt(diff)
         else:
             sqrt_addt_diff = -np.sqrt(-diff)
     else:
-        sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
+        sqrt_addt_diff = np.sqrt(norm_ddt_d1) - np.sqrt(norm_ddt_d2)
     rhs = [delta_t_years, sqrt_addt_diff]
+    if needs_sign_flip:
+        # If the signs were inverted in processing, then d2 is the reference not d1.
+        # TODO: make the arguments just reference, secondary?
+        rhs = [-ri for ri in rhs]
 
     point_to_pixel, bbox, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip)
 
@@ -243,8 +248,8 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     radar_wavelength = pickle_isce_obj["reference"]["instrument"]["radar_wavelength"]
     incidence_angle = pickle_isce_obj["reference"]["instrument"]["incidence_angle"] * np.pi / 180
 
-    print("radar wavelength:", radar_wavelength)
-    print("incidence angle:", incidence_angle)
+    print("radar wavelength (meteres):", radar_wavelength)
+    print("incidence angle (radians):", incidence_angle)
 
     point_to_pixel = []
     for point, row in df_calm_points.iterrows():
@@ -261,7 +266,6 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     
     # print("MAX PHASE, MIN PHASE", igram_unw_phase_slice.max(), igram_unw_phase_slice.min())
 
-    print("RAD CONVERT")
     igram_def = compute_deformation(
         igram_unw_phase_slice,
         incidence_angle,

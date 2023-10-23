@@ -22,6 +22,9 @@ COPY conda_envs conda_envs
 COPY MintPy/requirements.txt requirements.txt
 RUN ./mambaforge/bin/mamba install --file conda_envs/requirements.txt --file requirements.txt isce2">=2.6.3" --yes
 
+# Installs libGL.so.1 which cv2 needs
+RUN apt-get update && apt-get install libgl1
+
 RUN echo "source /root/tools/conda_envs/config.rc" >> ~/.bashrc
 
 COPY scripts/init.sh /etc/profile.d/init.sh

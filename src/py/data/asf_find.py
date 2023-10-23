@@ -9,9 +9,9 @@ sys.path.append("..")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 # %%
 # use https://search.asf.alaska.edu/
-wkt = 'POLYGON((-157.501 70.8686,-155.355 70.8686,-155.355 71.5596,-157.501 71.5596,-157.501 70.8686))'
+wkt = 'POINT (-156.589301 71.31072)'
 s = time.time()
-results = asf.geo_search(platform=[asf.PLATFORM.ALOS], intersectsWith=wkt)
+results = asf.geo_search(platform=[asf.PLATFORM.ALOS], intersectsWith=wkt, start=datetime(2006, 1, 1))
 e = time.time()
 print("Took:", e - s, "seconds")
 
@@ -20,7 +20,7 @@ expected_granules = []
 for (g1, g2) in SCHAEFER_INTEFEROGRAMS:
     expected_granules.append(g1)
     expected_granules.append(g2)
-expected_granules = [e + '-L1.5' for e in expected_granules]
+expected_granules = [e + '-L1.0' for e in expected_granules]
 expected_granules = set(expected_granules)
 
 # %%
@@ -28,18 +28,22 @@ expected_granules = set(expected_granules)
 matches = []
 for r in results:
     if r.meta['native-id'] in expected_granules:
-        print("Found", r.meta['native-id'])
         matches.append(r)
 assert len(matches) == len(expected_granules)
 
 # %%
-results_filtered = [r for r in results if r.meta['native-id'].endswith('-L1.5')]
+results_filtered = [r for r in results if r.meta['native-id'].endswith('-L1.0')]
+polygons = [Polygon(m.geometry['coordinates'][0]) for m in results_filtered]
+point = Point(-156.589301, 71.310720)
 
 # %%
 year = 2006
 months = [5, 6, 7, 8]
 matches = dict()
-for r in results_filtered:
+for r, p in zip(results_filtered, polygons):
+    if not p.contains(point):
+        # print(f"Failed {r.meta['native-id']}")
+        continue
     start_date = r.umm['TemporalExtent']['RangeDateTime']['BeginningDateTime']
     start_date = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
     if (start_date.year == year and start_date.month in months):
@@ -53,20 +57,22 @@ for r in results_filtered:
 
 # %%
 
-# Node 61 U1 plot
-point = Point(-156.589301, 71.310720)
+# TODO: see if this is really needed?
 download_list = []
 for (k, v) in matches.items():
-    min_dist = float('inf')
-    best_r = None
-    for r in v:
-        polygon = Polygon(r.geometry['coordinates'][0])
-        distance = point.distance(polygon.centroid)
-        if distance < min_dist:
-            distance = min_dist
-            best_r = r
-    assert best_r is not None
-    # to ignore -L1.5
+    assert len(v) == 1
+    # min_dist = float('inf')
+    # best_r = None
+    # for r in v:
+    #     polygon = Polygon(r.geometry['coordinates'][0])
+    #     distance = point.distance(polygon.centroid)
+    #     if distance < min_dist:
+    #         distance = min_dist
+    #         best_r = r
+    # assert best_r is not None
+    # to ignore -L1.0
+    best_r = v[0]
+    
     granule = best_r.meta['native-id'].split('-')[0]
     download_list.append((k, granule))
 

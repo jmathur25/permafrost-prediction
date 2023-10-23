@@ -7,20 +7,29 @@ import pandas as pd
 
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.soil_models import alt_to_surface_deformation
+from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
 from methods.schaefer import process_scene_pair
 from data.utils import get_date_for_alos
-from methods.utils import prepare_calm_data, prepare_temp
+from methods.utils import compute_stats, prepare_calm_data, prepare_temp
 from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 
-igrams_usable = []
-for (alos2, alos1) in JATIN_SINGLE_SEASON_2006_IGRAMS:
-    d = ISCE2_OUTPUTS_DIR / f"{alos2}_{alos1}"
-    if not (d / 'interferogram/filt_topophase.unw').exists():
-        print("TODO:", d)
-    else:
-        igrams_usable.append((alos2, alos1))
+igrams_usable = JATIN_SINGLE_SEASON_2006_IGRAMS = [
+    ('ALPSRP027982170', 'ALPSRP026522180'),
+    ('ALPSRP026522180', 'ALPSRP021272170'),
+    # ('ALPSRP021272170', 'ALPSRP020901420'),
+    ('ALPSRP020901420', 'ALPSRP019812180'),
+    # ('ALPSRP019812180', 'ALPSRP017332180'),
+    # ('ALPSRP017332180', 'ALPSRP016671420'),
+]
+
+# igrams_usable = []
+# for (alos2, alos1) in JATIN_SINGLE_SEASON_2006_IGRAMS:
+#     d = ISCE2_OUTPUTS_DIR / f"{alos2}_{alos1}"
+#     if not (d / 'interferogram/filt_topophase.unw').exists():
+#         print("TODO:", d)
+#     else:
+#         igrams_usable.append((alos2, alos1))
         
 calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
 temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
@@ -71,6 +80,9 @@ print("Calibration date, scene:", calib_date, calib_scene)
 avg_alt_calib = df_alt_gt['alt_m'].mean()
 avg_sqrt_norm_ddt_calib = np.sqrt(df_alt_gt['norm_ddt'].values).mean()
 
+subs = df_alt_gt['alt_m'].apply(alt_to_surface_deformation)
+avg_subsidence_stddev = np.std(subs)
+
 def get_scene_patch_mean_sub(scene):
     scene_d = get_date_for_alos(scene)[1]
     scene_sqrt_ddt = np.sqrt(df_temp.loc[scene_d.year, scene_d.month, scene_d.day]['norm_ddt'])
@@ -95,15 +107,35 @@ for i, (scene1, scene2) in enumerate(si):
     # Make the average the expected subsidence difference
     # TODO: should this be done on the entire slice?
     lhs = np.array(lhs)
-    lhs = lhs - lhs.mean() + (scene1_patch_mean - scene2_patch_mean)
-    lhs_all[i] = lhs
+    lhs_norm = (lhs - lhs.mean()) / lhs.std()
+    lhs_rescaled = lhs_norm * avg_subsidence_stddev + (scene1_patch_mean - scene2_patch_mean)
+    lhs_all[i] = lhs_rescaled
     rhs_all[i, :] = rhs
 
 # Ignore time column, just DDT
-rhs_all = rhs_all[i, 1]
+rhs_all = rhs_all[:, [1]]
 rhs_pi = np.linalg.pinv(rhs_all)
 sol = rhs_pi @ lhs_all
 
 E = sol[0, :]
+
+# TODO: we should really do sqrt, avg per year, then overall avg
+avg_sqrt_ddt = np.sqrt(df_alt_gt['norm_ddt'].values).mean()
+E = E * avg_sqrt_ddt
+
+print("AVG E", np.mean(E))
+
+alt_pred = []
+for e, point in zip(E, df_alt_gt.index):
+    if e < 1e-3:
+        print(f"Skipping {point} due to non-positive deformation")
+        alt_pred.append(np.nan)
+        continue
+    alt = compute_alt_f_deformation(e)
+    alt_pred.append(alt)
+
+alt_pred = np.array(alt_pred)
+alt_gt = df_alt_gt["alt_m"].values
+compute_stats(alt_pred, alt_gt)
 
 print()

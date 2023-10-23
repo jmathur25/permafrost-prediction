@@ -81,6 +81,8 @@ def _download_alos_palsar_granule(username, password, granules: Tuple[str]):
         assert found_l1_0_file, f"Found no raw data file (with L1.0 in its name) for {granule}"
 
     assert len(all_downloaded_files) == 0, f"Could not match these files: {all_downloaded_files}"
+    
+    l1_folders = [savedir / ALOS_L1_0_DIRNAME for savedir in savedirs]
 
     print("Extracting the raw (L1.0) data")
     for l1_folder in l1_folders:

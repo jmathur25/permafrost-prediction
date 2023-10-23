@@ -13,14 +13,15 @@ igrams = JATIN_SINGLE_SEASON_2006_IGRAMS
 assert len(set(igrams)) == len(igrams)
 
 # TODO: parallelize
-igrams_to_do = []
-for alos1, alos2 in igrams:
-    savedir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
-    if savedir.exists():
-        print("SKIPPING", alos1, alos2)
-    else:
-        igrams_to_do.append((alos1, alos2))
-igrams_to_do = JATIN_SINGLE_SEASON_2006_IGRAMS
+print("OVERRDING IGRAMS TO DO")
+igrams_to_do = JATIN_SINGLE_SEASON_2006_IGRAMS[-2:]
+# igrams_to_do = []
+# for alos1, alos2 in igrams:
+#     savedir = ISCE2_OUTPUTS_DIR / f"{alos1}_{alos2}"
+#     if savedir.exists():
+#         print("SKIPPING", alos1, alos2)
+#     else:
+#         igrams_to_do.append((alos1, alos2))
 assert len(igrams_to_do) > 0
 
 
