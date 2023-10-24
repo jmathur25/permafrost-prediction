@@ -22,6 +22,8 @@ igrams_usable = JATIN_SINGLE_SEASON_2006_IGRAMS = [
     # ('ALPSRP019812180', 'ALPSRP017332180'),
     # ('ALPSRP017332180', 'ALPSRP016671420'),
 ]
+print("OVERRIDE IGRAMS")
+igrams_usable = igrams_usable[0:1]
 
 # igrams_usable = []
 # for (alos2, alos1) in JATIN_SINGLE_SEASON_2006_IGRAMS:
@@ -83,11 +85,11 @@ avg_sqrt_norm_ddt_calib = np.sqrt(df_alt_gt['norm_ddt'].values).mean()
 subs = df_alt_gt['alt_m'].apply(alt_to_surface_deformation)
 avg_subsidence_stddev = np.std(subs)
 
-def get_scene_patch_mean_sub(scene):
+def get_scene_expected_alt(scene):
     scene_d = get_date_for_alos(scene)[1]
     scene_sqrt_ddt = np.sqrt(df_temp.loc[scene_d.year, scene_d.month, scene_d.day]['norm_ddt'])
     avg_scene_alt = avg_alt_calib * scene_sqrt_ddt / avg_sqrt_norm_ddt_calib
-    return alt_to_surface_deformation(avg_scene_alt)
+    return avg_scene_alt
 
 def get_expected_alt_per_pixel(scene):
     scene_d = get_date_for_alos(scene)[1]
@@ -95,22 +97,23 @@ def get_expected_alt_per_pixel(scene):
     expected_pixel_alt = df_alt_gt['alt_m'].values * scene_sqrt_ddt / np.sqrt(df_alt_gt['norm_ddt'].values)
     return expected_pixel_alt
 
-def get_expected_deformation_per_pixel(scene):
-    expected_pixel_alt = get_expected_alt_per_pixel(scene)
-    return np.array([alt_to_surface_deformation(alt) for alt in expected_pixel_alt])
-
-expected_N_per_pixel = np.square(df_alt_gt['alt_m'].values /np.sqrt(df_alt_gt['norm_ddt'].values))/2
+# expected_N_per_pixel = np.square(df_alt_gt['alt_m'].values /np.sqrt(df_alt_gt['norm_ddt'].values))/2
 lhs_all = np.zeros((n, len(df_alt_gt)))
 rhs_all = np.zeros((n, 2))
 for i, (scene1, scene2) in enumerate(si):
-    # scene1_patch_mean = get_scene_patch_mean_sub(scene1)
-    # scene2_patch_mean = get_scene_patch_mean_sub(scene2)
-    # scene1_expected_deformation = get_expected_deformation_per_pixel(scene1)
-    # scene2_expected_deformation = get_expected_deformation_per_pixel(scene2)
-    scene1_expected_alt = get_expected_alt_per_pixel(scene1)
-    scene2_expected_alt = get_expected_alt_per_pixel(scene2)
-    # expected_deformation_per_pixel = scene1_expected_deformation - scene2_expected_deformation
-    lhs, rhs = process_scene_pair(
+    scene1_avg_alt = get_scene_expected_alt(scene1)
+    scene2_avg_alt = get_scene_expected_alt(scene2)
+    scene1_avg_def = alt_to_surface_deformation(scene1_avg_alt)
+    scene2_avg_def = alt_to_surface_deformation(scene2_avg_alt)
+    expected_avg_def = scene1_avg_def - scene2_avg_def
+
+    # IDEALIZED MODEL:
+    scene1_expected_alt_per_pixel = get_expected_alt_per_pixel(scene1)
+    scene1_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene1_expected_alt_per_pixel])
+    scene2_expected_alt_per_pixel = get_expected_alt_per_pixel(scene2)
+    scene2_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene2_expected_alt_per_pixel])
+    deformation_per_pixel = scene1_expected_deformation_per_pixel - scene2_expected_deformation_per_pixel
+    _deformation_per_pixel, rhs = process_scene_pair(
         scene1,
         scene2,
         df_alt_gt,
@@ -121,16 +124,15 @@ for i, (scene1, scene2) in enumerate(si):
         False,
         # ideal_deformation=expected_deformation_per_pixel
     )
-    # lhs = expected_deformation_per_pixel
-    lhs = np.sqrt(2*expected_N_per_pixel) * rhs[1]
-    # Make the average the expected subsidence difference
-    # TODO: should this be done on the entire slice?
-    # lhs = np.array(lhs)
-    # lhs_norm = (lhs - lhs.mean()) / lhs.std()
-    # lhs = lhs_norm * avg_subsidence_stddev + (scene1_patch_mean - scene2_patch_mean)
+    deformation_per_pixel = deformation_per_pixel - deformation_per_pixel.mean() + expected_avg_def
+    # lhs = np.sqrt(2*expected_N_per_pixel) * rhs[1]
+    scene1_avg_def = alt_to_surface_deformation(scene1_avg_alt)
+    scene2_est_deformation_per_pixel = scene1_avg_def - deformation_per_pixel
+    scene2_est_alt_per_pixel = np.array([compute_alt_f_deformation(sub) for sub in scene2_est_deformation_per_pixel])
+    lhs = scene1_avg_alt - scene2_est_alt_per_pixel
+    
     lhs_all[i] = lhs
     rhs_all[i, :] = rhs
-    break
 
 # Ignore time column, just DDT
 rhs_all = rhs_all[:, [1]]
