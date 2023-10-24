@@ -89,11 +89,27 @@ def get_scene_patch_mean_sub(scene):
     avg_scene_alt = avg_alt_calib * scene_sqrt_ddt / avg_sqrt_norm_ddt_calib
     return alt_to_surface_deformation(avg_scene_alt)
 
+def get_expected_alt_per_pixel(scene):
+    scene_d = get_date_for_alos(scene)[1]
+    scene_sqrt_ddt = np.sqrt(df_temp.loc[scene_d.year, scene_d.month, scene_d.day]['norm_ddt'])
+    expected_pixel_alt = df_alt_gt['alt_m'].values * scene_sqrt_ddt / np.sqrt(df_alt_gt['norm_ddt'].values)
+    return expected_pixel_alt
+
+def get_expected_deformation_per_pixel(scene):
+    expected_pixel_alt = get_expected_alt_per_pixel(scene)
+    return np.array([alt_to_surface_deformation(alt) for alt in expected_pixel_alt])
+
+expected_N_per_pixel = np.square(df_alt_gt['alt_m'].values /np.sqrt(df_alt_gt['norm_ddt'].values))/2
 lhs_all = np.zeros((n, len(df_alt_gt)))
 rhs_all = np.zeros((n, 2))
 for i, (scene1, scene2) in enumerate(si):
-    scene1_patch_mean = get_scene_patch_mean_sub(scene1)
-    scene2_patch_mean = get_scene_patch_mean_sub(scene2)
+    # scene1_patch_mean = get_scene_patch_mean_sub(scene1)
+    # scene2_patch_mean = get_scene_patch_mean_sub(scene2)
+    # scene1_expected_deformation = get_expected_deformation_per_pixel(scene1)
+    # scene2_expected_deformation = get_expected_deformation_per_pixel(scene2)
+    scene1_expected_alt = get_expected_alt_per_pixel(scene1)
+    scene2_expected_alt = get_expected_alt_per_pixel(scene2)
+    # expected_deformation_per_pixel = scene1_expected_deformation - scene2_expected_deformation
     lhs, rhs = process_scene_pair(
         scene1,
         scene2,
@@ -102,39 +118,33 @@ for i, (scene1, scene2) in enumerate(si):
         df_temp,
         use_geo,
         sqrt_ddt_correction,
-        False
+        False,
+        # ideal_deformation=expected_deformation_per_pixel
     )
+    # lhs = expected_deformation_per_pixel
+    lhs = np.sqrt(2*expected_N_per_pixel) * rhs[1]
     # Make the average the expected subsidence difference
     # TODO: should this be done on the entire slice?
-    lhs = np.array(lhs)
-    lhs_norm = (lhs - lhs.mean()) / lhs.std()
-    lhs_rescaled = lhs_norm * avg_subsidence_stddev + (scene1_patch_mean - scene2_patch_mean)
-    lhs_all[i] = lhs_rescaled
+    # lhs = np.array(lhs)
+    # lhs_norm = (lhs - lhs.mean()) / lhs.std()
+    # lhs = lhs_norm * avg_subsidence_stddev + (scene1_patch_mean - scene2_patch_mean)
+    lhs_all[i] = lhs
     rhs_all[i, :] = rhs
+    break
 
 # Ignore time column, just DDT
 rhs_all = rhs_all[:, [1]]
 rhs_pi = np.linalg.pinv(rhs_all)
 sol = rhs_pi @ lhs_all
 
-E = sol[0, :]
+alt_pred = sol[0, :]
 
 # TODO: we should really do sqrt, avg per year, then overall avg
 avg_sqrt_ddt = np.sqrt(df_alt_gt['norm_ddt'].values).mean()
-E = E * avg_sqrt_ddt
+alt_pred = alt_pred * avg_sqrt_ddt
 
-print("AVG E", np.mean(E))
+print("AVG ALT", np.mean(alt_pred))
 
-alt_pred = []
-for e, point in zip(E, df_alt_gt.index):
-    if e < 1e-3:
-        print(f"Skipping {point} due to non-positive deformation")
-        alt_pred.append(np.nan)
-        continue
-    alt = compute_alt_f_deformation(e)
-    alt_pred.append(alt)
-
-alt_pred = np.array(alt_pred)
 alt_gt = df_alt_gt["alt_m"].values
 compute_stats(alt_pred, alt_gt)
 

@@ -1,6 +1,7 @@
 import datetime
 import pathlib
 import pickle
+from typing import Optional, Union
 import click
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,10 +15,12 @@ import tqdm
 import sys
 
 
+
 # TODO: fix module-ing
 sys.path.append("/permafrost-prediction/src/py")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from methods.utils import LatLonFile, compute_stats, prepare_calm_data, prepare_temp
+from methods.gt_phase_unwrap import solve_best_phase_unwrap
 from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
@@ -179,7 +182,7 @@ def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_
 
 
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, needs_sign_flip,
+    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, needs_sign_flip, ideal_deformation: Optional[np.ndarray]=None
 ):
     n_horiz = 1
     n_vert = 1
@@ -209,35 +212,16 @@ def process_scene_pair(
         # TODO: make the arguments just reference, secondary?
         rhs = [-ri for ri in rhs]
 
-    point_to_pixel, bbox, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip)
+    point_to_pixel, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip, ideal_deformation)
+    return igram_def, rhs
 
-    lhs = []
-    n_over_2_vert = n_vert // 2
-    extra_vert = n_vert % 2
-    n_over_2_horiz = n_horiz // 2
-    extra_horiz = n_horiz % 2
-    for _, y, x in point_to_pixel:
-        y -= bbox[0][0]
-        x -= bbox[0][1]
-        igram_slice = igram_def[
-            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
-        ]
-        lhs.append(igram_slice.mean())
-    return lhs, rhs
-
-def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip):
+def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip, ideal_deformation: Optional[np.ndarray]=None):
     intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
     if use_geo:
         intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
     ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
-    igram_unw_phase = ds.GetRasterBand(2).ReadAsArray()
+    igram_unw_phase_img = ds.GetRasterBand(2).ReadAsArray()
     
-    # print("USING WRAPPED PHASE")
-    # intfg_unw_file = isce_output_dir / 'interferogram/filt_topophase.flat'
-    # ds = gdal.Open(str(intfg_unw_file), gdal.GA_ReadOnly)
-    # igram = ds.GetRasterBand(1).ReadAsArray()
-    # print("IGRAM", igram)
-    # igram_unw_phase = np.angle(igram)
     if use_geo:
         lat_lon = LatLonFile.XML.create_lat_lon(intfg_unw_file)
     else:
@@ -259,20 +243,25 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
         point_to_pixel.append([point, y, x])
     point_to_pixel = np.array(point_to_pixel)
 
-    bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
-    print(f"Bounding box set to: {bbox}")
-
-    igram_unw_phase_slice = compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip)
+    # bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
+    # print(f"Bounding box set to: {bbox}")
     
-    # print("MAX PHASE, MIN PHASE", igram_unw_phase_slice.max(), igram_unw_phase_slice.min())
-
+    igram_unw_phase = compute_phase_slice(igram_unw_phase_img, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip)
+    
+    if ideal_deformation is not None:
+        print("Correcting for phase unwrapping errors using ideal deformation")
+        # TODO: per pixel incidence angle??
+        ideal_unw_phase = ideal_deformation_to_phase(ideal_deformation, incidence_angle, radar_wavelength)
+        igram_wrapped_phase = igram_unw_phase - np.round(igram_unw_phase / (2 * np.pi)) * 2 * np.pi
+        igram_unw_phase = solve_best_phase_unwrap(ideal_unw_phase, igram_wrapped_phase)
+    
     igram_def = compute_deformation(
-        igram_unw_phase_slice,
+        igram_unw_phase,
         incidence_angle,
         radar_wavelength,
     )
     
-    return point_to_pixel,bbox,igram_def,lat_lon
+    return point_to_pixel,igram_def,lat_lon
 
 
 def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo, sqrt_ddt_correction):
@@ -383,32 +372,41 @@ def plot_change(img, bbox, point_to_pixel, label):
     plt.show()
 
 
-def compute_phase_slice(igram_unw_phase, bbox, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip):
-    igram_unw_phase_slice = igram_unw_phase[bbox[0][0] : bbox[1][0], bbox[0][1] : bbox[1][1]]
+def extract_average(igram, y, x, n_horiz, n_vert):
+    half_horiz = n_horiz // 2
+    half_vert = n_vert // 2
+    extra_horiz = n_horiz % 2
+    extra_vert = n_vert % 2
+    
+    # Define the bounding box coordinates
+    y_start, y_end = max(0, y - half_vert), min(igram.shape[0], y + half_vert + extra_vert)
+    x_start, x_end = max(0, x - half_horiz), min(igram.shape[1], x + half_horiz + extra_horiz)
+
+    # Extract the box and compute the average
+    box = igram[y_start:y_end, x_start:x_end]
+    return np.mean(box)
+
+
+def compute_phase_slice(igram_unw_phase_img, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip):
+    # grab the phases of the study points
+    igram_unw_phase = np.array([extract_average(igram_unw_phase_img, y, x, n_horiz, n_vert) for _, y, x in point_to_pixel])
+
     if needs_sign_flip:
-    # negative because all inteferograms were computed with granule 1 as the reference
-    # and granule 2 as the secondary. This means the phase difference is granule 1 - granule 2.
-    # However, the RHS is constructed as data at time of granule 2 - data at time of granule 1.
-    # For example, if granule 1 was taken in in June in 2006 and graule 2 in Aug in 2006, we have two things:
-    # 1. RHS (time difference and sqrt ADDT diff), which would be those values in Aug - those values in June
-    # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
-    # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
-        igram_unw_phase_slice = -igram_unw_phase_slice
+        # negative because all inteferograms were computed with granule 1 as the reference
+        # and granule 2 as the secondary. This means the phase difference is granule 1 - granule 2.
+        # However, the RHS is constructed as data at time of granule 2 - data at time of granule 1.
+        # For example, if granule 1 was taken in in June in 2006 and graule 2 in Aug in 2006, we have two things:
+        # 1. RHS (time difference and sqrt ADDT diff), which would be those values in Aug - those values in June
+        # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
+        # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
+        igram_unw_phase = -igram_unw_phase
     if calib_point_id is not None:
         # Use phase-differences wrt to reference pixel
-        row = point_to_pixel[point_to_pixel[:, 0] == calib_point_id]
-        assert row.shape == (1, 3)
-        y = row[0, 1] - bbox[0][0]
-        x = row[0, 2] - bbox[0][1]
-        n_over_2_vert = n_vert // 2
-        extra_vert = n_vert % 2
-        n_over_2_horiz = n_horiz // 2
-        extra_horiz = n_horiz % 2
-        calib_phase_slice = igram_unw_phase_slice[
-            y - n_over_2_vert : y + n_over_2_vert + extra_vert, x - n_over_2_horiz : x + n_over_2_horiz + extra_horiz
-        ]
-        igram_unw_phase_slice = igram_unw_phase_slice - calib_phase_slice.mean()
-    return igram_unw_phase_slice
+        idx = np.argwhere(point_to_pixel[:, 0] == calib_point_id)
+        assert idx.shape == (1,1)
+        ref_phase = igram_unw_phase[idx[0,0]]
+        igram_unw_phase = igram_unw_phase - ref_phase
+    return igram_unw_phase
 
 
 def compute_deformation(
@@ -417,10 +415,16 @@ def compute_deformation(
     wavelength,
 ):
     # TODO: incident angle per pixel
-    los_def = igram_unw_delta_phase_slice / (2 * 2 * np.pi) * wavelength
+    los_def = igram_unw_delta_phase_slice / (4 * np.pi) * wavelength
     ground_def = los_def / np.cos(incidence_angle)
     return ground_def
 
+
+def ideal_deformation_to_phase(ideal_deformation: np.array, incidence_angle: float, wavelength: float) -> np.ndarray:
+    ideal_los_def = ideal_deformation * np.cos(incidence_angle)
+    ideal_igram_unw_phase = ideal_los_def / wavelength * (4 * np.pi)
+    return ideal_igram_unw_phase
+    
 
 def compute_bounding_box(pixels, n=10):
     # Initialize min and max coordinates for y and x
