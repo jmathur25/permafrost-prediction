@@ -11,19 +11,24 @@ from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deform
 from methods.schaefer import process_scene_pair
 from data.utils import get_date_for_alos
 from methods.utils import compute_stats, prepare_calm_data, prepare_temp
-from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS
+from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS, SCHAEFER_INTEFEROGRAMS
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 
-igrams_usable = JATIN_SINGLE_SEASON_2006_IGRAMS = [
-    ('ALPSRP027982170', 'ALPSRP026522180'),
-    ('ALPSRP026522180', 'ALPSRP021272170'),
-    # ('ALPSRP021272170', 'ALPSRP020901420'),
-    ('ALPSRP020901420', 'ALPSRP019812180'),
-    # ('ALPSRP019812180', 'ALPSRP017332180'),
-    # ('ALPSRP017332180', 'ALPSRP016671420'),
-]
-print("OVERRIDE IGRAMS")
-igrams_usable = igrams_usable[0:1]
+# igrams_usable = JATIN_SINGLE_SEASON_2006_IGRAMS = [
+#     ('ALPSRP027982170', 'ALPSRP026522180'),
+#     ('ALPSRP026522180', 'ALPSRP021272170'),
+#     # ('ALPSRP021272170', 'ALPSRP020901420'),
+#     ('ALPSRP020901420', 'ALPSRP019812180'),
+#     # ('ALPSRP019812180', 'ALPSRP017332180'),
+#     # ('ALPSRP017332180', 'ALPSRP016671420'),
+# ]
+# print("OVERRIDE IGRAMS")
+# igrams_usable = igrams_usable[0:1]
+# needs_sign_flip = False
+
+print("USING SCHAEFER FIRST IGRAM")
+igrams_usable = SCHAEFER_INTEFEROGRAMS[0:1]
+needs_sign_flip = True
 
 # igrams_usable = []
 # for (alos2, alos1) in JATIN_SINGLE_SEASON_2006_IGRAMS:
@@ -101,6 +106,8 @@ def get_expected_alt_per_pixel(scene):
 lhs_all = np.zeros((n, len(df_alt_gt)))
 rhs_all = np.zeros((n, 2))
 for i, (scene1, scene2) in enumerate(si):
+    if needs_sign_flip:
+        scene2, scene1 = scene1, scene2
     scene1_avg_alt = get_scene_expected_alt(scene1)
     scene2_avg_alt = get_scene_expected_alt(scene2)
     scene1_avg_def = alt_to_surface_deformation(scene1_avg_alt)
@@ -108,12 +115,15 @@ for i, (scene1, scene2) in enumerate(si):
     expected_avg_def = scene1_avg_def - scene2_avg_def
 
     # IDEALIZED MODEL:
-    scene1_expected_alt_per_pixel = get_expected_alt_per_pixel(scene1)
-    scene1_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene1_expected_alt_per_pixel])
-    scene2_expected_alt_per_pixel = get_expected_alt_per_pixel(scene2)
-    scene2_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene2_expected_alt_per_pixel])
-    deformation_per_pixel = scene1_expected_deformation_per_pixel - scene2_expected_deformation_per_pixel
-    _deformation_per_pixel, rhs = process_scene_pair(
+    # scene1_expected_alt_per_pixel = get_expected_alt_per_pixel(scene1)
+    # scene1_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene1_expected_alt_per_pixel])
+    # scene2_expected_alt_per_pixel = get_expected_alt_per_pixel(scene2)
+    # scene2_expected_deformation_per_pixel = np.array([alt_to_surface_deformation(alt) for alt in scene2_expected_alt_per_pixel])
+    # deformation_per_pixel = scene1_expected_deformation_per_pixel - scene2_expected_deformation_per_pixel
+    
+    if needs_sign_flip:
+        scene2, scene1 = scene1, scene2
+    deformation_per_pixel, rhs = process_scene_pair(
         scene1,
         scene2,
         df_alt_gt,
@@ -121,14 +131,16 @@ for i, (scene1, scene2) in enumerate(si):
         df_temp,
         use_geo,
         sqrt_ddt_correction,
-        False,
+        needs_sign_flip=needs_sign_flip,
         # ideal_deformation=expected_deformation_per_pixel
     )
     deformation_per_pixel = deformation_per_pixel - deformation_per_pixel.mean() + expected_avg_def
     # lhs = np.sqrt(2*expected_N_per_pixel) * rhs[1]
     scene1_avg_def = alt_to_surface_deformation(scene1_avg_alt)
     scene2_est_deformation_per_pixel = scene1_avg_def - deformation_per_pixel
-    scene2_est_alt_per_pixel = np.array([compute_alt_f_deformation(sub) for sub in scene2_est_deformation_per_pixel])
+    scene2_est_alt_per_pixel = np.array([compute_alt_f_deformation(sub) if sub > 1e-3 else np.nan for sub in scene2_est_deformation_per_pixel])
+    # frac_nans = np.mean(np.isnan(scene2_est_alt_per_pixel))
+    # print("Frac nans:", frac_nans)
     lhs = scene1_avg_alt - scene2_est_alt_per_pixel
     
     lhs_all[i] = lhs
