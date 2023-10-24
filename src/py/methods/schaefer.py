@@ -36,7 +36,7 @@ def schaefer_method():
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
     paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [21, 43, 55]
+    data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
@@ -74,8 +74,7 @@ def schaefer_method():
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
 
     # RHS and LHS per-pixel of eq. 2
-    print("OVERRDING, TESTING JUST ONE")
-    si = SCHAEFER_INTEFEROGRAMS[0:1]
+    si = SCHAEFER_INTEFEROGRAMS
     n = len(si)
     lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
