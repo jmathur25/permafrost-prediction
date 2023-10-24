@@ -74,7 +74,8 @@ def schaefer_method():
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
 
     # RHS and LHS per-pixel of eq. 2
-    si = SCHAEFER_INTEFEROGRAMS
+    print("OVERRDING, TESTING JUST ONE")
+    si = SCHAEFER_INTEFEROGRAMS[0:1]
     n = len(si)
     lhs_all = np.zeros((n, len(df_alt_gt)))
     rhs_all = np.zeros((n, 2))
@@ -124,11 +125,13 @@ def schaefer_method():
                 rhs_all[i, :] = rhs
 
     print("Solving equations")
+    rhs_all = rhs_all[:, [1]]
     rhs_pi = np.linalg.pinv(rhs_all)
     sol = rhs_pi @ lhs_all
 
-    R = sol[0, :]
-    E = sol[1, :]
+    # R = sol[0, :]
+    # E = sol[1, :]
+    E = sol[0, :]
 
     # # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
     # # already is per-season with measurement time normalized to 1, and `ddt_scale`.

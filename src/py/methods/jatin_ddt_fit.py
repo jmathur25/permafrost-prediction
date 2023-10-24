@@ -44,7 +44,6 @@ temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 paper_specified_ignore = [7, 110, 121]
 data_specified_ignore = [21, 43, 55]
 ignore_point_ids = paper_specified_ignore + data_specified_ignore
-calib_point_id = 61
 start_year = 2006
 end_year = 2006
 norm_per_year = False
@@ -93,11 +92,11 @@ print("Calibration date, scene:", calib_date, calib_scene)
 
 avg_alt_calib = df_alt_gt['alt_m'].mean()
 avg_sqrt_norm_ddt_calib = np.sqrt(df_alt_gt['norm_ddt'].values).mean()
-calib_point_id = 1
+calib_point_id = 61
 use_calib_node = True
 
 if use_calib_node:
-    print("Calibrating using calibration node")
+    print("Calibrating using calibration node:", calib_point_id)
 else:
     print("Calibrating using average")
 
