@@ -231,7 +231,7 @@ def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_sca
         df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
     return df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
 
-def prepare_temp(temp_file, start_year, end_year, norm_per_year):
+def prepare_temp(temp_file, start_year, end_year):
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
     df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
@@ -239,20 +239,13 @@ def prepare_temp(temp_file, start_year, end_year, norm_per_year):
     df_temps = []
     for year, df_t in df_temp.groupby("year"):
         compute_ddt_ddf(df_t)
-        if norm_per_year:
-            # QUESTION: is "end of season" normalization when barrow measures or just highest DDT per year?
-            df_t["norm_ddt"] = df_t["ddt"] / df_t["ddt"].values[-1]
-            # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-            # end_of_season_ddt = df_t.loc[year, date_max_alt.month, date_max_alt.day]["ddt"]
-            # df_t["norm_ddt"] = df_t["ddt"] / end_of_season_ddt
         df_temps.append(df_t)
     df_temp = pd.concat(df_temps, verify_integrity=True)
-    if not norm_per_year:
-        max_ddt = df_temp["ddt"].max()
-        # print("overring max ddt")
-        # max_ddt = 15**2
-        df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
-        # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
+    max_ddt = df_temp["ddt"].max()
+    # print("overring max ddt")
+    # max_ddt = 15**2
+    df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
     return df_temp
 
 def compute_ddt_ddf(df):

@@ -14,6 +14,9 @@ import h5py
 import tqdm
 import sys
 
+sys.path.append("/permafrost-prediction/src/py")
+from methods.resalt import ReSALT, ReSALT_Type
+
 
 
 # TODO: fix module-ing
@@ -42,15 +45,6 @@ def schaefer_method():
     start_year = 2006
     end_year = 2010
 
-    # If False, ADDT normalized per year. Otherwise, normalized by biggest ADDT across all years.
-    norm_per_year = False  # True
-    
-    # Run using MintPy instead of Schaefer approach. TODO: split off
-    mintpy = False
-    
-    # If True, uses Roger/Chen redefined way to compute ADDT diff
-    sqrt_ddt_correction = False
-
     multi_threaded = True
 
     # Use the geo-corrected interferogram products instead of radar geometry
@@ -69,103 +63,49 @@ def schaefer_method():
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     calib_subsidence = alt_to_surface_deformation(calib_alt)
-    # print("OVERRIDING SUB")
-    # calib_subsidence = 0.0202
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
+    
+    resalt = ReSALT(df_temp, df_alt_gt, calib_point_id, calib_subsidence, ReSALT_Type.LIU_SCHAEFER)
 
     # RHS and LHS per-pixel of eq. 2
     si = SCHAEFER_INTEFEROGRAMS
     n = len(si)
-    lhs_all = np.zeros((n, len(df_alt_gt)))
-    rhs_all = np.zeros((n, 2))
-    if mintpy:
-        print("Running with MintPy solution")
-        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
-        stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
-        lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo, sqrt_ddt_correction)
-    else:
-        if multi_threaded:
-            with ThreadPoolExecutor() as executor:
-                pbar = tqdm.tqdm(total=n)
-                futures = []
-                for i, scene_pair in enumerate(si):
-                    futures.append(
-                        executor.submit(
-                            worker,
-                            i,
-                            scene_pair,
-                            df_alt_gt,
-                            calib_point_id,
-                            df_temp,
-                            use_geo,
-                            sqrt_ddt_correction
-                        )
+    deformations = np.zeros((n, df_alt_gt.shape[0]))
+    dates = [None] * n
+    if multi_threaded:
+        with ThreadPoolExecutor() as executor:
+            pbar = tqdm.tqdm(total=n)
+            futures = []
+            for i, scene_pair in enumerate(si):
+                futures.append(
+                    executor.submit(
+                        worker,
+                        i,
+                        scene_pair,
+                        df_alt_gt,
+                        use_geo,
                     )
-
-                for future in as_completed(futures):
-                    pbar.update(1)
-                    i, lhs, rhs = future.result()
-                    lhs_all[i] = lhs
-                    rhs_all[i, :] = rhs
-                pbar.close()
-        else:
-            for i, (scene1, scene2) in enumerate(si):
-                lhs, rhs = process_scene_pair(
-                    scene1,
-                    scene2,
-                    df_alt_gt,
-                    calib_point_id,
-                    df_temp,
-                    use_geo,
-                    sqrt_ddt_correction,
-                    True
                 )
-                lhs_all[i] = lhs
-                rhs_all[i, :] = rhs
 
-    print("Solving equations")
-    # rhs_all = rhs_all[:, ]
-    rhs_pi = np.linalg.pinv(rhs_all)
-    sol = rhs_pi @ lhs_all
+            for future in as_completed(futures):
+                pbar.update(1)
+                i, deformation, date_pair = future.result()
+                deformations[i, :] = deformation
+                dates[i] = date_pair
+            pbar.close()
+    else:
+        for i, (scene1, scene2) in enumerate(si):
+            deformation, date_pair = process_scene_pair(
+                scene1,
+                scene2,
+                df_alt_gt,
+                use_geo,
+                True
+            )
+            deformations[i, :] = deformation
+            dates[i] = date_pair
 
-    # R = sol[0, :]
-    E = sol[1, :]
-    # E = sol[0, :]
-
-    # # TODO: should we scale E based on measurement DDT? Note this also depends if normalization
-    # # already is per-season with measurement time normalized to 1, and `ddt_scale`.
-    # # Scale E based on measurement DDT
-    # avg_sqrt_ddt = 0.0
-    # years = df_temp.index.get_level_values(level=0).unique()
-    # for year in years:
-    #     # date_max_alt = df_peak_alt.loc[calib_point_id, year]["date"]
-    #     # measurement_ddt = df_temp.loc[year, date_max_alt.month, date_max_alt.day]["norm_ddt"]
-    #     measurement_ddt = df_temp.loc[year, 12, 31]["norm_ddt"]
-    #     avg_sqrt_ddt += np.sqrt(measurement_ddt)
-    # avg_sqrt_ddt = avg_sqrt_ddt / len(years)
-    # # E was formed assuming the measurement occurs at the end of the thaw season, yet
-    # # in reality it did not. We scale E down by the average sqrt DDT of the measurement
-    # # across the thaw seasons to get an estimate of the average E at measurement time.
-    # # TODO: measurement is 1995-2013 average yet this only does years 2006-2010
-    # E = E * avg_sqrt_ddt
-
-    idx = np.argwhere(df_alt_gt.index == calib_point_id)[0, 0]
-    # E[idx] should be approximately 0
-    delta_E = calib_subsidence - E[idx]
-    E += delta_E
-
-    print("AVG E", np.mean(E))
-
-    alt_pred = []
-    for e, point in zip(E, df_alt_gt.index):
-        if e < 1e-3:
-            print(f"Skipping {point} due to non-positive deformation")
-            alt_pred.append(np.nan)
-            continue
-        alt = compute_alt_f_deformation(e)
-        alt_pred.append(alt)
-
-    alt_pred = np.array(alt_pred)
+    alt_pred = resalt.run_inversion(deformations, dates)
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)
 
@@ -175,16 +115,17 @@ def schaefer_method():
     # np.save("alt_gt", alt_gt)
 
 
-def worker(i, scene_pair, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction):
+def worker(i, scene_pair, df_alt_gt, use_geo):
     scene1, scene2 = scene_pair
-    lhs, rhs = process_scene_pair(
-        scene1, scene2, df_alt_gt, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, True
+    deformation, date_pair = process_scene_pair(
+        scene1, scene2, df_alt_gt, use_geo, True
     )
-    return i, lhs, rhs
+    return i, deformation, date_pair
 
 
+# TODO: fix naming
 def process_scene_pair(
-    alos1, alos2, df_calm_points, calib_point_id, df_temp, use_geo, sqrt_ddt_correction, needs_sign_flip, ideal_deformation: Optional[np.ndarray]=None
+    alos1, alos2, df_calm_points, use_geo, needs_sign_flip
 ):
     n_horiz = 1
     n_vert = 1
@@ -197,27 +138,12 @@ def process_scene_pair(
     _, alos_d1 = get_date_for_alos(alos1)
     _, alos_d2 = get_date_for_alos(alos2)
     print(f"Processing {alos1} on {alos_d1} and {alos2} on {alos_d2}")
-    delta_t_years = (alos_d1 - alos_d2).days / 365
-    norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-    norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
-    if sqrt_ddt_correction:
-        diff = norm_ddt_d1 - norm_ddt_d2
-        if diff > 0:
-            sqrt_addt_diff = np.sqrt(diff)
-        else:
-            sqrt_addt_diff = -np.sqrt(-diff)
-    else:
-        sqrt_addt_diff = np.sqrt(norm_ddt_d1) - np.sqrt(norm_ddt_d2)
-    rhs = [delta_t_years, sqrt_addt_diff]
     if needs_sign_flip:
-        # If the signs were inverted in processing, then d2 is the reference not d1.
-        # TODO: make the arguments just reference, secondary?
-        rhs = [-ri for ri in rhs]
+        alos_d1, alos_d2 = alos_d2, alos_d1
+    point_to_pixel, igram_def, _ = process_igram(df_calm_points, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip)
+    return igram_def, (alos_d1, alos_d2)
 
-    point_to_pixel, igram_def, _ = process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip, ideal_deformation)
-    return igram_def, rhs
-
-def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip, ideal_deformation: Optional[np.ndarray]=None):
+def process_igram(df_calm_points, use_geo, n_horiz, n_vert, isce_output_dir, needs_sign_flip):
     intfg_unw_file = isce_output_dir / "interferogram/filt_topophase.unw"
     if use_geo:
         intfg_unw_file = intfg_unw_file.with_suffix(".unw.geo")
@@ -248,21 +174,12 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     # bbox = compute_bounding_box(point_to_pixel[:, [1, 2]])
     # print(f"Bounding box set to: {bbox}")
     
-    igram_unw_phase = compute_phase_slice(igram_unw_phase_img, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip)
-    
-    if ideal_deformation is not None:
-        print("Correcting for phase unwrapping errors using ideal deformation")
-        # TODO: per pixel incidence angle??
-        ideal_unw_phase = ideal_deformation_to_phase(ideal_deformation, incidence_angle, radar_wavelength)
-        igram_wrapped_phase = igram_unw_phase - np.round(igram_unw_phase / (2 * np.pi)) * 2 * np.pi
-        igram_unw_phase = solve_best_phase_unwrap(ideal_unw_phase, igram_wrapped_phase)
-    
+    igram_unw_phase = compute_phase_slice(igram_unw_phase_img, point_to_pixel, n_horiz, n_vert, needs_sign_flip)
     igram_def = compute_deformation(
         igram_unw_phase,
         incidence_angle,
         radar_wavelength,
     )
-    
     return point_to_pixel,igram_def,lat_lon
 
 
@@ -389,7 +306,7 @@ def extract_average(igram, y, x, n_horiz, n_vert):
     return np.mean(box)
 
 
-def compute_phase_slice(igram_unw_phase_img, point_to_pixel, calib_point_id, n_horiz, n_vert, needs_sign_flip):
+def compute_phase_slice(igram_unw_phase_img, point_to_pixel, n_horiz, n_vert, needs_sign_flip):
     # grab the phases of the study points
     igram_unw_phase = np.array([extract_average(igram_unw_phase_img, y, x, n_horiz, n_vert) for _, y, x in point_to_pixel])
 
@@ -402,12 +319,6 @@ def compute_phase_slice(igram_unw_phase_img, point_to_pixel, calib_point_id, n_h
         # 2. LHS (delta deformation in Aug - (minus) delta deformation in June). This comes from computing the
         # phase difference, but right now the values flipped. It would give you June - (minus) Aug. Hence we fix that here.
         igram_unw_phase = -igram_unw_phase
-    if calib_point_id is not None:
-        # Use phase-differences wrt to reference pixel
-        idx = np.argwhere(point_to_pixel[:, 0] == calib_point_id)
-        assert idx.shape == (1,1)
-        ref_phase = igram_unw_phase[idx[0,0]]
-        igram_unw_phase = igram_unw_phase - ref_phase
     return igram_unw_phase
 
 
