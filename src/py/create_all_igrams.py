@@ -7,7 +7,7 @@ from methods.create_alos_interferogram import process_alos
 from data.consts import ISCE2_OUTPUTS_DIR
 from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS, SCHAEFER_INTEFEROGRAMS
 
-igrams_to_do = SCHAEFER_INTEFEROGRAMS[0:1] # JATIN_SINGLE_SEASON_2006_IGRAMS
+igrams_to_do = [("ALPSRP235992170", "ALPSRP242702170")] # JATIN_SINGLE_SEASON_2006_IGRAMS
 
 # ensure no dups
 assert len(set(igrams_to_do)) == len(igrams_to_do)

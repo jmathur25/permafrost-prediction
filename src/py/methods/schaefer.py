@@ -51,7 +51,7 @@ def schaefer_method():
     # If True, uses Roger/Chen redefined way to compute ADDT diff
     sqrt_ddt_correction = False
 
-    multi_threaded = True
+    multi_threaded = False
 
     # Use the geo-corrected interferogram products instead of radar geometry
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
@@ -225,9 +225,9 @@ def process_igram(df_calm_points, calib_point_id, use_geo, n_horiz, n_vert, isce
     igram_unw_phase_img = ds.GetRasterBand(2).ReadAsArray()
     
     if use_geo:
-        lat_lon = LatLonFile.XML.create_lat_lon(intfg_unw_file)
+        lat_lon = LatLonFile.XML.create_lat_lon(intfg_unw_file, check_dims=igram_unw_phase_img.shape)
     else:
-        lat_lon = LatLonFile.RDR.create_lat_lon(isce_output_dir / "geometry")
+        lat_lon = LatLonFile.RDR.create_lat_lon(isce_output_dir / "geometry", check_dims=igram_unw_phase_img.shape)
 
     with open(isce_output_dir / "PICKLE/interferogram", "rb") as fp:
         pickle_isce_obj = pickle.load(fp)

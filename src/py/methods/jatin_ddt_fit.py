@@ -8,6 +8,7 @@ import pandas as pd
 
 
 sys.path.append("/permafrost-prediction/src/py")
+from methods.simulate_sub_diff_solve import find_best_alt_diff
 from scaling_theory import RefBiasDirection, estimate_alts
 from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
 from methods.schaefer import process_scene_pair
@@ -159,8 +160,12 @@ def solve_jatin_resalt_reformulated():
         # scene2_est_alt_per_pixel = np.array([compute_alt_f_deformation(sub) if sub > 1e-3 else np.nan for sub in scene2_est_deformation_per_pixel])
         # scene1_est_alt_per_pixel = scene1_avg_alt/scene2_avg_alt * scene2_est_alt_per_pixel
         # lhs = scene1_est_alt_per_pixel - scene2_est_alt_per_pixel
+        
+        # TODO: OLD
         alt_pred_later, alt_pred_earlier = estimate_alts(deformation_per_pixel, scene1_calib_alt, scene2_sqrt_ddt/scene1_sqrt_ddt, RefBiasDirection.NONE)
         lhs = alt_pred_later - alt_pred_earlier
+        
+        # lhs = find_best_alt_diff(deformation_per_pixel, scene1_sqrt_ddt/scene2_sqrt_ddt)
         
         lhs_all[i] = lhs
         rhs_all[i, :] = rhs

@@ -36,24 +36,33 @@ class LatLonFile(Enum):
     XML = "xml" # ISCE2 output after geocoding
     
     
-    def create_lat_lon(self, path: pathlib.Path) -> "LatLon":
+    def create_lat_lon(self, path: pathlib.Path, check_dims=None, full=False) -> "LatLon":
         if self == LatLonFile.RDR:
-            ds = gdal.Open(str(path / "lat.rdr"), gdal.GA_ReadOnly)
+            lat_path = path / "lat.rdr"
+            lon_path = path / "lon.rdr"
+            if full:
+                lat_path = lat_path.with_suffix('.rdr.full')
+                lon_path = lon_path.with_suffix('.rdr.full')
+            ds = gdal.Open(str(lat_path), gdal.GA_ReadOnly)
             lat = ds.GetRasterBand(1).ReadAsArray()
             ds = None
 
             # reading the lat/lon
-            ds = gdal.Open(str(path / "lon.rdr"), gdal.GA_ReadOnly)
+            ds = gdal.Open(str(lon_path), gdal.GA_ReadOnly)
             lon = ds.GetRasterBand(1).ReadAsArray()
             del ds
-            return LatLonArray(lat, lon)
+            # Full cannot use kdtree
+            use_kdtree = not full
+            return LatLonArray(lat, lon, check_dims, use_kdtree)
         elif self == LatLonFile.H5:
             geo_file = path / "geo_geometryRadar.h5"
             geo_data = h5py.File(geo_file)
             lat = geo_data['latitude'][()]
             lon = geo_data['longitude'][()]
-            return LatLonArray(lat, lon)
+            return LatLonArray(lat, lon, check_dims)
         elif self == LatLonFile.XML:
+            if check_dims:
+                print("dimensions cannot be checked for LatLon's in XML")
             return LatLonXML(path)
 
 class LatLon(ABC):
@@ -97,7 +106,9 @@ class LatLonXML(LatLon):
 
 
 class LatLonArray(LatLon):
-    def __init__(self, lat: np.ndarray, lon: np.ndarray):
+    def __init__(self, lat: np.ndarray, lon: np.ndarray, check_dims=None, use_kdtree=True):
+        if check_dims:
+            assert lat.shape == lon.shape == check_dims
         self.lat_arr = lat
         self.lon_arr = lon
         
@@ -119,11 +130,17 @@ class LatLonArray(LatLon):
         print("VERT RES (m)", dy_meters / dy_pix)
         print("HORIZ RES (m)", dx_meters / dx_pix)
 
-        self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
-        self.kd_tree = KDTree(self.flattened_coordinates)
+        self.use_kdtree = use_kdtree
+        if self.use_kdtree:
+            self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
+            self.kd_tree = KDTree(self.flattened_coordinates)
 
     def find_closest_pixel(self, lat, lon, max_dist_meters=35):
-        _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        if self.use_kdtree:
+            _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        else:
+            distances = np.sqrt((self.lat_arr - lat) ** 2 + (self.lon_arr - lon) ** 2)
+            closest_pixel_idx_flattened = np.argmin(distances)
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
         # TODO: implement proper distance checking
         dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
