@@ -26,7 +26,7 @@ from methods.utils import LatLonFile, compute_stats, prepare_calm_data, prepare_
 from methods.gt_phase_unwrap import solve_best_phase_unwrap
 from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
-from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
+from methods.soil_models import LiuSMM
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 @click.command()
@@ -62,10 +62,11 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    calib_subsidence = alt_to_surface_deformation(calib_alt)
+    liu_smm = LiuSMM()
+    calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
     
-    resalt = ReSALT(df_temp, df_alt_gt, calib_point_id, calib_subsidence, ReSALT_Type.LIU_SCHAEFER)
+    resalt = ReSALT(df_temp, liu_smm, ReSALT_Type.LIU_SCHAEFER, calib=(calib_point_id, calib_subsidence))
 
     # RHS and LHS per-pixel of eq. 2
     si = SCHAEFER_INTEFEROGRAMS

@@ -21,7 +21,7 @@ import sys
 import tqdm
 sys.path.append("..")
 
-from methods.schaefer import alt_to_surface_deformation, compute_alt_f_deformation, compute_bounding_box, plot_change
+from methods.schaefer import liu_deformation_from_alt, liu_alt_from_deformation, compute_bounding_box, plot_change
 from utils import compute_stats, load_img, LatLon
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR
 from data.utils import get_date_for_alos
@@ -94,8 +94,8 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     alt1 = get_alt_for_calib_point(point_id, df_calm_d1)
     alt2 = get_alt_for_calib_point(point_id, df_calm_d2)
     
-    def1 = alt_to_surface_deformation(alt1)
-    def2 = alt_to_surface_deformation(alt2)
+    def1 = liu_deformation_from_alt(alt1)
+    def2 = liu_deformation_from_alt(alt2)
     
     # print("FRAC DEF", def1/def2)
     
@@ -105,13 +105,13 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
 calib_def_12 = compute_deformation_for_point(calib_point_id, df_calm_d1, df_calm_d2)
 
 alt1 = get_alt_for_calib_point(calib_point_id, df_calm_d1)
-def1 = alt_to_surface_deformation(alt1)
-alt1_hat = compute_alt_f_deformation(def1)
+def1 = liu_deformation_from_alt(alt1)
+alt1_hat = liu_alt_from_deformation(def1)
 print(f"For an ALT of {alt1}, we got back {alt1_hat}")
 
 alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
-def2 = alt_to_surface_deformation(alt2)
-alt2_hat = compute_alt_f_deformation(def2)
+def2 = liu_deformation_from_alt(alt2)
+alt2_hat = liu_alt_from_deformation(def2)
 print(f"For an ALT of {alt2}, we got back {alt2_hat}")
 
 alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
@@ -119,7 +119,7 @@ alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
 print(f"Estimated ground deformation at calibration point {calib_point_id}: {np.round(calib_def_12, decimals=3)} m")
 
 TEST_ALT = 19.34
-sd = alt_to_surface_deformation(TEST_ALT)
+sd = liu_deformation_from_alt(TEST_ALT)
 print(f"FOR ALT OF {TEST_ALT}, GOT DEF", sd)
 
 # %%
@@ -285,7 +285,7 @@ for yi in tqdm.tqdm(range(igram_def.shape[0])):
         if change < 0:
             print(f"Skipping {yi}, {xi} because deformation is positive")
             continue
-        alt = compute_alt_f_deformation(change)
+        alt = liu_alt_from_deformation(change)
         alt_predictions_img[yi, xi] = alt
 
 print("Predicting ALT per point")
@@ -296,7 +296,7 @@ for point, def_pred in zip(point_to_pixel[:,0], predicted_deformations):
         print(f"Skipping {point} because deformation is positive")
         alt_predictions.append(np.nan)
         continue
-    alt = compute_alt_f_deformation(change)
+    alt = liu_alt_from_deformation(change)
     alt_predictions.append(alt)
     
 # %%
@@ -314,7 +314,7 @@ for point in point_to_pixel[:,0]:
         print(f"Skipping point {point} because deformation is positive")
         gt_alt.append(np.nan)
         continue
-    alt = compute_alt_f_deformation(change)
+    alt = liu_alt_from_deformation(change)
     gt_alt.append(alt)
 
 gt_alt_img = construct_image(bbox, point_to_pixel, gt_alt)

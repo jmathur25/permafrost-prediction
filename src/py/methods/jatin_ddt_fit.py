@@ -10,7 +10,7 @@ import pandas as pd
 sys.path.append("/permafrost-prediction/src/py")
 from methods.simulate_sub_diff_solve import find_best_alt_diff
 from scaling_theory import RefBiasDirection, estimate_alts
-from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
+from methods.soil_models import liu_deformation_from_alt, liu_alt_from_deformation
 from methods.schaefer import process_scene_pair
 from data.utils import get_date_for_alos
 from methods.utils import compute_stats, prepare_calm_data, prepare_temp
@@ -127,8 +127,8 @@ def solve_jatin_resalt_reformulated():
             raise ValueError()
             # scene1_calib_alt = avg_alt * scene1_sqrt_ddt / avg_sqrt_norm_ddt
             # scene2_calib_alt = avg_alt * scene2_sqrt_ddt / avg_sqrt_norm_ddt
-        scene1_calib_def = alt_to_surface_deformation(scene1_calib_alt)
-        scene2_calib_def = alt_to_surface_deformation(scene2_calib_alt)
+        scene1_calib_def = liu_deformation_from_alt(scene1_calib_alt)
+        scene2_calib_def = liu_deformation_from_alt(scene2_calib_alt)
         expected_calib_def = scene1_calib_def - scene2_calib_def
 
         # Flip just for invoking process_scene_pair

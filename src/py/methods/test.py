@@ -2,8 +2,8 @@
 import sys
 
 sys.path.append('..')
-from methods.soil_models import alt_to_surface_deformation
+from methods.soil_models import liu_deformation_from_alt
 
 
-df = alt_to_surface_deformation(1.0)
+df = liu_deformation_from_alt(1.0)
 print(df)

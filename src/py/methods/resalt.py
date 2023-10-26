@@ -1,13 +1,13 @@
 
 from datetime import datetime
 import enum
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from methods.schaefer import get_norm_ddt
-from methods.soil_models import compute_alt_f_deformation
+from methods.soil_models import SoilMoistureModel
 
 
 class ReSALT_Type(enum.Enum):
@@ -16,16 +16,18 @@ class ReSALT_Type(enum.Enum):
 
 
 class ReSALT:
-    def __init__(self, df_temp: pd.DataFrame, df_points: pd.DataFrame, calib_id: int, calib_deformation: float, rtype: ReSALT_Type):
+    def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, rtype: ReSALT_Type, calib: Tuple[int, float]=None):
         """
         TODO: add support for gravel calibration point?
         """
         self.df_temp = df_temp
-        self.df_points = df_points
-        self.calib_id = calib_id
-        # This will be used to index into arrays
-        self.calib_idx = np.argwhere(df_points.index==calib_id)[0,0]
-        self.calib_deformation = calib_deformation
+        if calib:
+            self.calib_idx = calib[0]
+            self.calib_deformation = calib[1]
+        else:
+            self.calib_idx = None
+            self.calib_deformation = None
+        self.smm = smm
         self.rtype = rtype
     
 
@@ -46,33 +48,36 @@ class ReSALT:
             sqrt_addt_diff = np.sqrt(norm_ddt_ref) - np.sqrt(norm_ddt_sec)
             rhs = [delta_t_years, sqrt_addt_diff]
             
-            # Set the deformation to a delta w.r.t calibration point
-            delta = deformation[self.calib_idx]
-            lhs = deformation - delta
+            if self.calib_idx:
+                # Set the deformation to a delta w.r.t calibration point
+                delta = deformation[self.calib_idx]
+                lhs = deformation - delta
+            else:
+                lhs = deformation
             lhs_all[i,:] = lhs
             rhs_all[i,:] = rhs
         
         print("Solving equations")
-        # rhs_all = rhs_all[:, [1]]
+        rhs_all = rhs_all[:, [1]]
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
 
-        R = sol[0, :]
-        E = sol[1, :]
+        # R = sol[0, :]
+        E = sol[0, :]
         
         # Calibrate wrt known deformation
-        delta_E = self.calib_deformation - E[self.calib_idx]
-        E = E + delta_E
+        if self.calib_idx:
+            delta_E = self.calib_deformation - E[self.calib_idx]
+            E = E + delta_E
 
         print("AVG E", np.mean(E))
 
         alt_pred = []
-        for e, point in zip(E, self.df_points.index):
+        for e in E:
             if e < 1e-3:
-                print(f"Skipping {point} due to non-positive deformation")
                 alt_pred.append(np.nan)
                 continue
-            alt = compute_alt_f_deformation(e)
+            alt = self.smm.alt_from_deformation(e)
             alt_pred.append(alt)
 
         alt_pred = np.array(alt_pred)

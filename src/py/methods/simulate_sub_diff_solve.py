@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 
-from methods.soil_models import alt_to_surface_deformation
+from methods.soil_models import liu_deformation_from_alt
 from scipy.stats import pearsonr
 
 
@@ -12,7 +12,7 @@ def find_best_alt_diff(deformation_per_pixel, sqrt_ddt_ratio):
     h2s = sqrt_ddt_ratio * h1s
     subsidences = []
     for h2, h1 in zip(h2s, h1s):
-        sub = alt_to_surface_deformation(h2) - alt_to_surface_deformation(h1)
+        sub = liu_deformation_from_alt(h2) - liu_deformation_from_alt(h1)
         subsidences.append(sub)
     subsidences = np.array(subsidences)
     
