@@ -31,7 +31,9 @@ def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
     
     deformations = []
     dates = []
-    Ns = [rand.uniform(0.0005, 0.0009) for _ in range(n_pixels)]
+    N_mean = 7.5e-4
+    N_std = 2.5e-4
+    Ns = np.clip(rand.randn(n_pixels), -1.5, 1.5) * N_std + N_mean
     while len(deformations) != n_igrams:
         year_ref_idx = rand.randint(len(years))
         year_ref = years[year_ref_idx]
@@ -83,7 +85,7 @@ def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
     df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
     df_temp = df_temp.set_index(['year', 'month', 'day'])
     avg_cross_year_alt_per_pixel = np.mean(alts_per_pixel, axis=0)
-    
+    print("Avg ALT:", np.mean(avg_cross_year_alt_per_pixel), "STD ALT:", np.std(avg_cross_year_alt_per_pixel))
     return deformations, dates, df_temp, avg_cross_year_alt_per_pixel
 
 

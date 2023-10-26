@@ -10,7 +10,6 @@ import pandas as pd
 sys.path.append("/permafrost-prediction/src/py")
 from methods.simulate_sub_diff_solve import find_best_alt_diff
 from scaling_theory import RefBiasDirection, estimate_alts
-from methods.soil_models import liu_deformation_from_alt, liu_alt_from_deformation
 from methods.schaefer import process_scene_pair
 from data.utils import get_date_for_alos
 from methods.utils import compute_stats, prepare_calm_data, prepare_temp
@@ -49,13 +48,12 @@ def solve_jatin_resalt_reformulated():
     end_year = 2009
     calib_point_id = 61
     use_calib_node = True
-    norm_per_year = False
     multi_threaded = False
     ddt_scale = False
     use_geo = False
     sqrt_ddt_correction = False
 
-    df_temp = prepare_temp(temp_file, start_year, end_year, norm_per_year)
+    df_temp = prepare_temp(temp_file, start_year, end_year)
     df_alt_gt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
     df_calm_points = df_alt_gt[['point_id', 'latitude', 'longitude']].groupby('point_id').first()
     df_alt_gt = df_alt_gt.set_index(['point_id', 'year'])
