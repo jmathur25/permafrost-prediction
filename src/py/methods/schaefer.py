@@ -51,7 +51,7 @@ def schaefer_method():
     # If True, uses Roger/Chen redefined way to compute ADDT diff
     sqrt_ddt_correction = False
 
-    multi_threaded = False
+    multi_threaded = True
 
     # Use the geo-corrected interferogram products instead of radar geometry
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
