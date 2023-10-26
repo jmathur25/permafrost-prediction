@@ -31,7 +31,7 @@ def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
     
     deformations = []
     dates = []
-    Ns = [rand.uniform(0.0003, 0.0005) for _ in range(n_pixels)]
+    Ns = [rand.uniform(0.0005, 0.0009) for _ in range(n_pixels)]
     while len(deformations) != n_igrams:
         year_ref_idx = rand.randint(len(years))
         year_ref = years[year_ref_idx]
@@ -74,8 +74,8 @@ def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
         df['year'] = years[i]
         df_temps.append(df)
         alt_row = []
-        for i in range(len(Ns)):
-            max_year_alt = np.sqrt(2*Ns[i]*ddt_per_year[i][-1])
+        for j in range(len(Ns)):
+            max_year_alt = np.sqrt(2*Ns[j]*ddt_per_year[i][-1])
             alt_row.append(max_year_alt)
         alts_per_pixel.append(alt_row)
     df_temp = pd.concat(df_temps)
@@ -83,39 +83,51 @@ def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
     df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
     df_temp = df_temp.set_index(['year', 'month', 'day'])
     avg_cross_year_alt_per_pixel = np.mean(alts_per_pixel, axis=0)
+    
     return deformations, dates, df_temp, avg_cross_year_alt_per_pixel
 
 
-def test_constant_smm():
+def test_constant_smm(rtype: ReSALT_Type):
     smm = ConstantWaterSMM(s=0.5)
-    n_igrams = 1
-    n_pixels = 1
+    n_igrams = 10
+    n_pixels = 20
     deformations, dates, df_temp, alt_gt = make_simulated_data(n_igrams, n_pixels, smm)
-    resalt = ReSALT(df_temp, smm, ReSALT_Type.LIU_SCHAEFER)
+    calib_idx = 0
+    calib_deformation = smm.deformation_from_alt(alt_gt[calib_idx])
+    resalt = ReSALT(df_temp, smm, calib_idx, calib_deformation, rtype)
     alt_pred = resalt.run_inversion(deformations, dates)
     
+    # Ignore calibration point for errors
+    alt_pred = alt_pred[1:]
+    alt_gt = alt_gt[1:]
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
-    assert rmse < 1e-6
+    # This bound could be tighter, but we do discrete sampling to solve Jatin variety which induces sampling errors.
+    assert rmse < 5e-3
     # pearson_corr, _ = pearsonr(alt_pred, alt_gt)
     
     # print("RMSE", rmse)
     # print("Pearson R", pearson_corr)
     
     
-def test_liu_smm():
+def test_liu_smm(rtype: ReSALT_Type):
     smm = LiuSMM()
-    n_igrams = 1
-    n_pixels = 1
+    n_igrams = 20
+    n_pixels = 100
     deformations, dates, df_temp, alt_gt = make_simulated_data(n_igrams, n_pixels, smm)
-    resalt = ReSALT(df_temp, smm, ReSALT_Type.LIU_SCHAEFER)
+    calib_idx = 0
+    calib_deformation = smm.deformation_from_alt(alt_gt[calib_idx])
+    resalt = ReSALT(df_temp, smm, calib_idx, calib_deformation, rtype)
     alt_pred = resalt.run_inversion(deformations, dates)
     
+    # Ignore calibration point for errors
+    alt_pred = alt_pred[1:]
+    alt_gt = alt_gt[1:]
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
-    print("Naive ReSALT RMSE on Liu SMM:", round(rmse, decimals=4))
+    print(f"Resalt {rtype} RMSE under Liu model:", round(rmse, 4))
     
     
     
 if __name__ == '__main__':
-    test_constant_smm()
-    test_liu_smm()
+    # test_constant_smm(ReSALT_Type.JATIN)
+    test_liu_smm(ReSALT_Type.JATIN)
     

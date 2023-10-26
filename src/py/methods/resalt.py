@@ -8,6 +8,7 @@ import pandas as pd
 
 from methods.schaefer import get_norm_ddt
 from methods.soil_models import SoilMoistureModel
+from methods.simulate_sub_diff_solve import find_best_alt_diff
 
 
 class ReSALT_Type(enum.Enum):
@@ -16,20 +17,17 @@ class ReSALT_Type(enum.Enum):
 
 
 class ReSALT:
-    def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, rtype: ReSALT_Type, calib: Tuple[int, float]=None):
+    def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, calib_idx: int, calib_deformation: float, rtype: ReSALT_Type):
         """
         TODO: add support for gravel calibration point?
         """
         self.df_temp = df_temp
-        if calib:
-            self.calib_idx = calib[0]
-            self.calib_deformation = calib[1]
-        else:
-            self.calib_idx = None
-            self.calib_deformation = None
+        self.calib_idx = calib_idx
+        self.calib_deformation = calib_deformation
+        self.calib_alt = smm.alt_from_deformation(self.calib_deformation)
         self.smm = smm
         self.rtype = rtype
-    
+     
 
     def run_inversion(self, deformations: np.ndarray, dates: List[Tuple[datetime, datetime]]) -> np.ndarray:
         """
@@ -41,19 +39,37 @@ class ReSALT:
         n = deformations.shape[0]
         lhs_all = np.zeros((n, deformations.shape[1]))
         rhs_all = np.zeros((n, 2))
-        for i, (deformation, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
+        for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
             delta_t_years = (date_ref - date_sec).days / 365
             norm_ddt_ref = get_norm_ddt(self.df_temp, date_ref)
             norm_ddt_sec = get_norm_ddt(self.df_temp, date_sec)
-            sqrt_addt_diff = np.sqrt(norm_ddt_ref) - np.sqrt(norm_ddt_sec)
+            sqrt_norm_ddt_ref = np.sqrt(norm_ddt_ref)
+            sqrt_norm_ddt_sec = np.sqrt(norm_ddt_sec)
+            sqrt_addt_diff = sqrt_norm_ddt_ref - sqrt_norm_ddt_sec
             rhs = [delta_t_years, sqrt_addt_diff]
             
-            if self.calib_idx:
-                # Set the deformation to a delta w.r.t calibration point
-                delta = deformation[self.calib_idx]
-                lhs = deformation - delta
+            if self.rtype == ReSALT_Type.LIU_SCHAEFER:
+                # Solve as deltas over calibration deformation
+                delta = deformation_per_pixel[self.calib_idx]
+                lhs = deformation_per_pixel - delta
+            elif self.rtype == ReSALT_Type.JATIN:
+                # TODO: easily scales to calib being a non-thaw point like gravel, as all we ultimately do
+                # is calculate subsidence within an image?
+                expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
+                expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
+                expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
+                expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
+                expected_calib_def = expected_deformation_ref - expected_deformation_sec
+                
+                # Scale the deformations to align with the expected calibration deformation
+                calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
+                deformation_per_pixel = deformation_per_pixel + calib_node_delta
+                
+                lhs = find_best_alt_diff(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
             else:
-                lhs = deformation
+                raise ValueError()
+                
+                
             lhs_all[i,:] = lhs
             rhs_all[i,:] = rhs
         
@@ -63,24 +79,24 @@ class ReSALT:
         sol = rhs_pi @ lhs_all
 
         # R = sol[0, :]
-        E = sol[0, :]
         
-        # Calibrate wrt known deformation
-        if self.calib_idx:
+        if self.rtype == ReSALT_Type.LIU_SCHAEFER:
+            E = sol[0, :]
             delta_E = self.calib_deformation - E[self.calib_idx]
             E = E + delta_E
+            alt_pred = []
+            for e in E:
+                if e < 1e-3:
+                    alt_pred.append(np.nan)
+                    continue
+                alt = self.smm.alt_from_deformation(e)
+                alt_pred.append(alt)
 
-        print("AVG E", np.mean(E))
-
-        alt_pred = []
-        for e in E:
-            if e < 1e-3:
-                alt_pred.append(np.nan)
-                continue
-            alt = self.smm.alt_from_deformation(e)
-            alt_pred.append(alt)
-
-        alt_pred = np.array(alt_pred)
+            alt_pred = np.array(alt_pred)
+        elif self.rtype == ReSALT_Type.JATIN:
+            alt_pred = sol[0, :]
+        else:
+            raise ValueError()
         return alt_pred
 
         

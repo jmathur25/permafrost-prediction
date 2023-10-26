@@ -162,10 +162,10 @@ def solve_jatin_resalt_reformulated():
         # lhs = scene1_est_alt_per_pixel - scene2_est_alt_per_pixel
         
         # TODO: OLD
-        alt_pred_later, alt_pred_earlier = estimate_alts(deformation_per_pixel, scene1_calib_alt, scene2_sqrt_ddt/scene1_sqrt_ddt, RefBiasDirection.NONE)
-        lhs = alt_pred_later - alt_pred_earlier
+        # alt_pred_later, alt_pred_earlier = estimate_alts(deformation_per_pixel, scene1_calib_alt, scene2_sqrt_ddt/scene1_sqrt_ddt, RefBiasDirection.NONE)
+        # lhs = alt_pred_later - alt_pred_earlier
         
-        # lhs = find_best_alt_diff(deformation_per_pixel, scene1_sqrt_ddt/scene2_sqrt_ddt)
+        lhs = find_best_alt_diff(deformation_per_pixel, scene1_sqrt_ddt/scene2_sqrt_ddt)
         
         lhs_all[i] = lhs
         rhs_all[i, :] = rhs
