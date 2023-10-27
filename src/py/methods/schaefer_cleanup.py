@@ -43,7 +43,14 @@ def schaefer_method():
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
-    end_year = 2009
+    end_year = 2010
+    rtype = ReSALT_Type.JATIN
+    
+    # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
+    # clarity I will make both use same year set.
+    # if rtype == ReSALT_Type.JATIN:
+    #     # I do not have the full igram set
+    #     end_year = 2009
 
     multi_threaded = True
 
@@ -65,7 +72,6 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    rtype = ReSALT_Type.JATIN
     if rtype == ReSALT_Type.JATIN:
         # For Jatin, we need to report the calibration subsidence as if it happened during max thaw, not
         # when the measurement happened. To calculate the right calibration subsidence, we first need
@@ -81,7 +87,7 @@ def schaefer_method():
     calib_idx = matches[0,0]
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
     
-    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, ReSALT_Type.JATIN)
+    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, rtype)
 
     # RHS and LHS per-pixel of eq. 2
     si = [

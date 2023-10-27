@@ -29,7 +29,7 @@ class ReSALT:
         self.rtype = rtype
      
 
-    def run_inversion(self, deformations: np.ndarray, dates: List[Tuple[datetime, datetime]]) -> np.ndarray:
+    def run_inversion(self, deformations: np.ndarray, dates: List[Tuple[datetime, datetime]], only_solve_E: bool=False) -> np.ndarray:
         """
         deformations: 2D-array of (igram_idx, pixel) that stores deformation
         dates: list of dates of the igrams. It is assumed that the first index
@@ -74,14 +74,32 @@ class ReSALT:
             rhs_all[i,:] = rhs
         
         print("Solving equations")
-        rhs_all = rhs_all[:, [1]]
+        if only_solve_E or self.rtype == ReSALT_Type.JATIN:
+            # Jatin mode cannot solve for R
+            rhs_all = rhs_all[:, [1]]
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
-
-        # R = sol[0, :]
         
+        # if self.rtype == ReSALT_Type.JATIN:
+        #     # Jatin mode can induce nans
+        #     nans = np.argwhere(np.isnan(alt_pred))
+        #     if len(nans) > 0:
+        #         resolved = 0
+        #         for i in nans[:,0]:
+        #             lhs_i = lhs_all[:,i]
+        #             nan_mask = np.isnan(lhs_i)
+        #             if np.mean(nan_mask) > 0.5:
+        #                 continue
+        #             not_nan_mask = ~nan_mask
+        #             alt_i = np.linalg.pinv(rhs_all[not_nan_mask]) @ lhs_i[not_nan_mask]
+        #             alt_pred[i] = alt_i
+        #             resolved += 1
+        #         print("Number of pixels with nans in least-squares inversion:", len(nans))
+        assert np.isnan(sol).sum() == 0
+
         if self.rtype == ReSALT_Type.LIU_SCHAEFER:
-            E = sol[0, :]
+            E_idx = 0 if only_solve_E else 1
+            E = sol[E_idx, :]
             delta_E = self.calib_deformation - E[self.calib_idx]
             E = E + delta_E
             alt_pred = []
