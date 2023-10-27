@@ -249,6 +249,9 @@ def prepare_temp(temp_file, start_year, end_year):
     # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
     return df_temp
 
+def get_norm_ddt(df_temp, date):
+    return df_temp.loc[date.year, date.month, date.day]["norm_ddt"]
+
 def compute_ddt_ddf(df):
     tmp_col = "temp_2m_c"
     freezing_point = 0.0

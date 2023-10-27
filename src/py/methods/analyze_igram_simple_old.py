@@ -22,7 +22,7 @@ sys.path.append("..")
 import tqdm
 
 from utils import load_img, LatLon
-from methods.schaefer import liu_deformation_from_alt, liu_alt_from_deformation, compute_bounding_box
+from py.methods.run_mintpy_ts_analysis import liu_deformation_from_alt, liu_alt_from_deformation, compute_bounding_box
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR
 from data.utils import get_date_for_alos
 
