@@ -44,13 +44,20 @@ def schaefer_method():
     calib_point_id = 61
     start_year = 2006
     end_year = 2010
-    rtype = ReSALT_Type.JATIN
+    rtype = ReSALT_Type.LIU_SCHAEFER
     
     # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
     # clarity I will make both use same year set.
     # if rtype == ReSALT_Type.JATIN:
     #     # I do not have the full igram set
     #     end_year = 2009
+    
+    si = SCHAEFER_INTEFEROGRAMS#[
+    #     ("ALPSRP021272170", "ALPSRP027982170"),
+    #     ("ALPSRP074952170", "ALPSRP081662170"),
+    #     ("ALPSRP182312170", "ALPSRP189022170"),
+    #     # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
+    # ]#SCHAEFER_INTEFEROGRAMS
 
     multi_threaded = True
 
@@ -90,12 +97,6 @@ def schaefer_method():
     resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, rtype)
 
     # RHS and LHS per-pixel of eq. 2
-    si = [
-        ("ALPSRP021272170", "ALPSRP027982170"),
-        ("ALPSRP074952170", "ALPSRP081662170"),
-        ("ALPSRP182312170", "ALPSRP189022170"),
-        # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
-    ]#SCHAEFER_INTEFEROGRAMS
     n = len(si)
     deformations = np.zeros((n, df_alt_gt.shape[0]))
     dates = [None] * n
@@ -133,8 +134,16 @@ def schaefer_method():
             dates[i] = date_pair
 
     alt_pred = resalt.run_inversion(deformations, dates)
+    
     # Scale down the predictions to be those at measurement time. They are currently end-of-season.
-    alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt['sqrt_norm_ddt'].values
+    # TODO: This currently decreases Jatin performance significantly. Schaefer gets away with it because
+    # although they formulate to end-of-season, they calibrate against a direct measurement, hence
+    # 'half-cancelling out' the effect. The fundamental issue is that root DDT stops being correlated
+    # with thaw depth at some point. Jatin formulation assumes this is true throughout the season.
+    # TODO: get more datasets, then come up with a robust formulation to handle this problem.
+    # It should improve results.
+    if rtype == ReSALT_Type.JATIN:
+        alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt['sqrt_norm_ddt'].values
     
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)

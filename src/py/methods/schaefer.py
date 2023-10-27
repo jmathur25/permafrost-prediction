@@ -167,6 +167,7 @@ def schaefer_method():
         alt_pred.append(alt)
 
     alt_pred = np.array(alt_pred)
+    
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)
 
