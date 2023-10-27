@@ -47,7 +47,7 @@ def solve_jatin_resalt_reformulated():
     data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     start_year = 2006
-    end_year = 2006
+    end_year = 2009
     calib_point_id = 61
     use_calib_node = True
     multi_threaded = False
@@ -79,8 +79,8 @@ def solve_jatin_resalt_reformulated():
 
     si = [
         ("ALPSRP021272170", "ALPSRP027982170"),
-        # ("ALPSRP074952170", "ALPSRP081662170"),
-        # ("ALPSRP182312170", "ALPSRP189022170"),
+        ("ALPSRP074952170", "ALPSRP081662170"),
+        ("ALPSRP182312170", "ALPSRP189022170"),
         # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
     ]
     needs_sign_flip = True
@@ -123,6 +123,9 @@ def solve_jatin_resalt_reformulated():
         if use_calib_node:
             scene1_calib_alt = get_expected_calib_alt(scene1_sqrt_ddt, df_alt_gt, calib_point_id, scene1_date.year)
             scene2_calib_alt = get_expected_calib_alt(scene2_sqrt_ddt, df_alt_gt, calib_point_id, scene2_date.year)
+            # GETS PARITY:
+            # scene1_calib_alt=0.3076322679068533*scene1_sqrt_ddt
+            # scene2_calib_alt=0.3076322679068533*scene2_sqrt_ddt
         else:
             # TODO: implement averaging approach
             raise ValueError()

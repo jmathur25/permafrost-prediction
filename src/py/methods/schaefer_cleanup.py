@@ -43,7 +43,7 @@ def schaefer_method():
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
-    end_year = 2006
+    end_year = 2009
 
     multi_threaded = True
 
@@ -86,8 +86,8 @@ def schaefer_method():
     # RHS and LHS per-pixel of eq. 2
     si = [
         ("ALPSRP021272170", "ALPSRP027982170"),
-        # ("ALPSRP074952170", "ALPSRP081662170"),
-        # ("ALPSRP182312170", "ALPSRP189022170"),
+        ("ALPSRP074952170", "ALPSRP081662170"),
+        ("ALPSRP182312170", "ALPSRP189022170"),
         # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
     ]#SCHAEFER_INTEFEROGRAMS
     n = len(si)
