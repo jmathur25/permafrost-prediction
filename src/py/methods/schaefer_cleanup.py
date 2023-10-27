@@ -43,7 +43,7 @@ def schaefer_method():
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
-    end_year = 2010
+    end_year = 2006
 
     multi_threaded = True
 
@@ -58,18 +58,38 @@ def schaefer_method():
 
     df_temp = prepare_temp(temp_file, start_year, end_year)
     df_peak_alt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
+    # Stores information on the avg root DDT at measurement time across the years
+    # TODO: technically this assumes each point was measured at the same time, which currently is true.
+    df_avg_measurement_alt_sqrt_ddt = df_peak_alt[['point_id', 'sqrt_norm_ddt']].groupby(['point_id']).mean()
     df_peak_alt = df_peak_alt.drop(['year', 'month', 'day', 'norm_ddt'], axis=1) # not needed anymore
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
+    rtype = ReSALT_Type.JATIN
+    if rtype == ReSALT_Type.JATIN:
+        # For Jatin, we need to report the calibration subsidence as if it happened during max thaw, not
+        # when the measurement happened. To calculate the right calibration subsidence, we first need
+        # to scale the calibration ALT to its average expected value across the years
+        ddts = df_temp[['norm_ddt']].groupby('year').last()
+        end_of_year_sqrt_ddt = np.mean(np.sqrt(ddts['norm_ddt'].values))
+        upscale = end_of_year_sqrt_ddt/df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]['sqrt_norm_ddt'].mean()
+        calib_alt = calib_alt*upscale
     liu_smm = LiuSMM()
     calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
+    matches = np.argwhere(df_alt_gt.index==calib_point_id)
+    assert matches.shape == (1,1)
+    calib_idx = matches[0,0]
     print("CALIBRATION SUBSIDENCE:", calib_subsidence)
     
-    resalt = ReSALT(df_temp, liu_smm, ReSALT_Type.LIU_SCHAEFER, calib=(calib_point_id, calib_subsidence))
+    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, ReSALT_Type.JATIN)
 
     # RHS and LHS per-pixel of eq. 2
-    si = SCHAEFER_INTEFEROGRAMS
+    si = [
+        ("ALPSRP021272170", "ALPSRP027982170"),
+        # ("ALPSRP074952170", "ALPSRP081662170"),
+        # ("ALPSRP182312170", "ALPSRP189022170"),
+        # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
+    ]#SCHAEFER_INTEFEROGRAMS
     n = len(si)
     deformations = np.zeros((n, df_alt_gt.shape[0]))
     dates = [None] * n
@@ -107,6 +127,9 @@ def schaefer_method():
             dates[i] = date_pair
 
     alt_pred = resalt.run_inversion(deformations, dates)
+    # Scale down the predictions to be those at measurement time. They are currently end-of-season.
+    alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt['sqrt_norm_ddt'].values
+    
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)
 

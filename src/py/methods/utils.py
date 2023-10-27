@@ -229,6 +229,7 @@ def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_sca
     df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
     if ddt_scale:
         df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
+    df_peak_alt['sqrt_norm_ddt'] = np.sqrt(df_peak_alt['norm_ddt'].values)
     return df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
 
 def prepare_temp(temp_file, start_year, end_year):

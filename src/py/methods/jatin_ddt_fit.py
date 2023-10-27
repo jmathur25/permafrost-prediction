@@ -7,7 +7,9 @@ import pandas as pd
 
 
 
+
 sys.path.append("/permafrost-prediction/src/py")
+from methods.soil_models import LiuSMM
 from methods.simulate_sub_diff_solve import find_best_alt_diff
 from scaling_theory import RefBiasDirection, estimate_alts
 from methods.schaefer import process_scene_pair
@@ -45,7 +47,7 @@ def solve_jatin_resalt_reformulated():
     data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     start_year = 2006
-    end_year = 2009
+    end_year = 2006
     calib_point_id = 61
     use_calib_node = True
     multi_threaded = False
@@ -77,12 +79,13 @@ def solve_jatin_resalt_reformulated():
 
     si = [
         ("ALPSRP021272170", "ALPSRP027982170"),
-        ("ALPSRP074952170", "ALPSRP081662170"),
-        ("ALPSRP182312170", "ALPSRP189022170"),
+        # ("ALPSRP074952170", "ALPSRP081662170"),
+        # ("ALPSRP182312170", "ALPSRP189022170"),
         # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
     ]
     needs_sign_flip = True
     n = len(si)
+    smm = LiuSMM()
 
     # all_scenes = []
     # for (scene1, scene2) in si:
@@ -125,8 +128,8 @@ def solve_jatin_resalt_reformulated():
             raise ValueError()
             # scene1_calib_alt = avg_alt * scene1_sqrt_ddt / avg_sqrt_norm_ddt
             # scene2_calib_alt = avg_alt * scene2_sqrt_ddt / avg_sqrt_norm_ddt
-        scene1_calib_def = liu_deformation_from_alt(scene1_calib_alt)
-        scene2_calib_def = liu_deformation_from_alt(scene2_calib_alt)
+        scene1_calib_def = smm.deformation_from_alt(scene1_calib_alt)
+        scene2_calib_def = smm.deformation_from_alt(scene2_calib_alt)
         expected_calib_def = scene1_calib_def - scene2_calib_def
 
         # Flip just for invoking process_scene_pair
@@ -163,7 +166,7 @@ def solve_jatin_resalt_reformulated():
         # alt_pred_later, alt_pred_earlier = estimate_alts(deformation_per_pixel, scene1_calib_alt, scene2_sqrt_ddt/scene1_sqrt_ddt, RefBiasDirection.NONE)
         # lhs = alt_pred_later - alt_pred_earlier
         
-        lhs = find_best_alt_diff(deformation_per_pixel, scene1_sqrt_ddt/scene2_sqrt_ddt)
+        lhs = find_best_alt_diff(deformation_per_pixel, scene1_sqrt_ddt, scene2_sqrt_ddt, smm)
         
         lhs_all[i] = lhs
         rhs_all[i, :] = rhs
