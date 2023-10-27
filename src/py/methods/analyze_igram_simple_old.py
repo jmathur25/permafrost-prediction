@@ -17,18 +17,18 @@ import pandas as pd
 
 # TODO: remove
 import sys
-
-import tqdm
 sys.path.append("..")
 
-from py.methods.run_mintpy_ts_analysis import liu_deformation_from_alt, liu_alt_from_deformation, compute_bounding_box, plot_change
-from utils import compute_stats, load_img, LatLon
+import tqdm
+
+from utils import load_img, LatLon
+from py.methods.run_mintpy_ts_analysis import liu_deformation_from_alt, liu_alt_from_deformation, compute_bounding_box
 from data.consts import CALM_PROCESSSED_DATA_DIR, ISCE2_OUTPUTS_DIR
 from data.utils import get_date_for_alos
 
 # %%
 alos1 = "ALPSRP021272170"
-alos2 = "ALPSRP189022170"
+alos2 = "ALPSRP027982170"
 
 alos_isce_outputs_dir = ISCE2_OUTPUTS_DIR/ f"{alos1}_{alos2}"
 
@@ -97,11 +97,10 @@ def compute_deformation_for_point(point_id, df_calm_d1, df_calm_d2):
     def1 = liu_deformation_from_alt(alt1)
     def2 = liu_deformation_from_alt(alt2)
     
-    # print("FRAC DEF", def1/def2)
-    
     return def1 - def2
 
     
+
 calib_def_12 = compute_deformation_for_point(calib_point_id, df_calm_d1, df_calm_d2)
 
 alt1 = get_alt_for_calib_point(calib_point_id, df_calm_d1)
@@ -117,10 +116,6 @@ print(f"For an ALT of {alt2}, we got back {alt2_hat}")
 alt2 = get_alt_for_calib_point(calib_point_id, df_calm_d2)
 
 print(f"Estimated ground deformation at calibration point {calib_point_id}: {np.round(calib_def_12, decimals=3)} m")
-
-TEST_ALT = 19.34
-sd = liu_deformation_from_alt(TEST_ALT)
-print(f"FOR ALT OF {TEST_ALT}, GOT DEF", sd)
 
 # %%
 intfg_unw_file = alos_isce_outputs_dir / 'interferogram/filt_topophase.unw'
@@ -192,7 +187,6 @@ def compute_phase_offset(
         px_y - n_over_2 : px_y + n_over_2 + extra, px_x - n_over_2 : px_x + n_over_2 + extra
     ]
     calib_phase = np.mean(calib_phase_slice)
-    print("CP", calib_phase)
     
     los_def = calib_point_def * np.cos(incidence_angle)
     los_phase = 2 * np.pi *los_def / wavelength
@@ -203,19 +197,18 @@ def compute_phase_offset(
 # phase computed of alos1 - alos2, so  must be computed this way too
 # incidence_angle = 38.7*np.pi/180
 # wavelength = 0.2360571
+# phase computed of alos1 - alos2, so  must be computed this way too
 with open(alos_isce_outputs_dir / "PICKLE/interferogram", "rb") as fp:
     pickle_isce_obj = pickle.load(fp)
         
 wavelength = pickle_isce_obj['reference']['instrument']['radar_wavelength']
-incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle']*np.pi/180
+incidence_angle = pickle_isce_obj['reference']['instrument']['incidence_angle'] * np.pi/180
 
 print('radar wavelength', wavelength)
 print('incidence angle', incidence_angle)
-
 phase_corr = compute_phase_offset(
     point_to_pixel, bbox, calib_point_id, calib_def_12, igram_unw_phase_slice, incidence_angle, wavelength)
 
-print("phase correction", phase_corr)
 igram_unw_phase_slice_corr = igram_unw_phase_slice + phase_corr
 
 # %%
@@ -227,7 +220,25 @@ def compute_deformation(igram_unw_phase_slice_corr, bbox, incidence_angle, wavel
 igram_def = compute_deformation(igram_unw_phase_slice_corr, bbox, incidence_angle, wavelength)
 
 # %%
-plot_change(igram_def, bbox, point_to_pixel, "Predicted Deformations")
+# Plot deformations
+def plot_change(img, point_to_pixel, label):
+    plt.imshow(img, cmap='viridis', origin='lower')
+
+    # Add red boxes
+    for point in point_to_pixel:
+        point_id, y, x = point
+        y -= bbox[0][0]
+        x -= bbox[0][1]
+        plt.gca().add_patch(plt.Rectangle((x - 1.5, y - 1.5), 3, 3, fill=None, edgecolor='red', linewidth=2))
+        
+        # Annotate each box with the point #
+        plt.annotate(f"#{point_id}", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=5, color='white')
+
+    plt.colorbar()
+    plt.title(label)
+    plt.show()
+    
+plot_change(igram_def, point_to_pixel, "Predicted Deformations")
 
 # %%
 deformations = []
@@ -256,6 +267,16 @@ def get_predicted_deformations(igram_def, bbox, point_to_pixel, n=2):
 predicted_deformations = get_predicted_deformations(igram_def, bbox, point_to_pixel)
 
 # %%
+r2 = r2_score(deformations, predicted_deformations)
+print(f"R^2 score: {r2}")
+
+pearson_corr, _ = pearsonr(predicted_deformations, deformations)
+print(f"Pearson R: {pearson_corr}")
+
+rmse = np.sqrt(mean_squared_error(deformations, predicted_deformations))
+print(f"RMSE: {rmse}")
+
+# %%
 def construct_image(bbox, point_to_pixel, values, n=3):
     dy = bbox[1][0] - bbox[0][0]
     dx = bbox[1][1] - bbox[0][1]
@@ -273,7 +294,7 @@ def construct_image(bbox, point_to_pixel, values, n=3):
     return image
 
 gt_def = construct_image(bbox, point_to_pixel, deformations)
-plot_change(gt_def, bbox, point_to_pixel, "Ground-Truth Deformations")
+plot_change(gt_def, point_to_pixel, "Ground-Truth Deformations")
 
 # %%
 dy = bbox[1][0] - bbox[0][0]
@@ -298,32 +319,54 @@ for point, def_pred in zip(point_to_pixel[:,0], predicted_deformations):
         continue
     alt = liu_alt_from_deformation(change)
     alt_predictions.append(alt)
-    
+
 # %%
-plot_change(alt_predictions_img, bbox, point_to_pixel, "ALT predictions")
+plot_change(alt_predictions_img, point_to_pixel, "ALT predictions")
 # %%
 gt_alt = []
 for point in point_to_pixel[:,0]:
     def_12 = compute_deformation_for_point(point, df_calm_d1, df_calm_d2)
     if np.isnan(def_12):
         print(f"Point {point} has NA deformation: {point}")
-        gt_alt.append(np.nan)
-        continue
     change = -def_12
     if change < 0:
         print(f"Skipping point {point} because deformation is positive")
-        gt_alt.append(np.nan)
         continue
     alt = liu_alt_from_deformation(change)
     gt_alt.append(alt)
 
 gt_alt_img = construct_image(bbox, point_to_pixel, gt_alt)
-plot_change(gt_alt_img, bbox, point_to_pixel, "Ground-Truth ALT")
+plot_change(gt_alt_img, point_to_pixel, "Ground-Truth ALT")
 
 # %%
-alt_predictions = np.array(alt_predictions)
-gt_alt = np.array(gt_alt)
+def compute_stats(alt_pred, alt_gt):
+    alt_pred = np.array(alt_pred)
+    alt_gt = np.array(alt_gt)
+    nan_mask = np.isnan(alt_pred)
+    print(f"number of nans: {nan_mask.sum()}/{len(alt_predictions)}")
+    not_nan_mask = ~nan_mask
+    alt_pred = alt_pred[not_nan_mask]
+    alt_gt = alt_gt[not_nan_mask]
+    diff = np.array(alt_pred) - np.array(alt_gt)
+    e = 0.079
+    psi_stat = np.square(diff/e)
+    psi_stat_mean = np.mean(psi_stat)
+    print("psi avg", psi_stat_mean)
+    mask_is_great = psi_stat < 1
+    frac_great_match = mask_is_great.mean() 
+    
+    resalt_e = 2*e
+    alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
+    alt_within_uncertainty_mask &= ~mask_is_great # exclude ones that are great
+    frac_good_match = alt_within_uncertainty_mask.mean()
+    
+    frac_bad_match = 1.0 - frac_great_match - frac_good_match
+    
+    print(f"frac great match: {frac_great_match}, frac good match: {frac_good_match}, frac bad match: {frac_bad_match}")
+
+    bias = diff.mean()
+    print("Bias", bias)
+    
 compute_stats(alt_predictions, gt_alt)
 
 # %%
- 

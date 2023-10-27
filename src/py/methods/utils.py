@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import pathlib
-from haversine import haversine
+from haversine import haversine, Unit
 from isce.components import isceobj
 import numpy as np
 from osgeo import gdal
+import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from scipy.spatial import KDTree
@@ -35,24 +36,33 @@ class LatLonFile(Enum):
     XML = "xml" # ISCE2 output after geocoding
     
     
-    def create_lat_lon(self, path: pathlib.Path) -> "LatLon":
+    def create_lat_lon(self, path: pathlib.Path, check_dims=None, full=False) -> "LatLon":
         if self == LatLonFile.RDR:
-            ds = gdal.Open(str(path / "lat.rdr"), gdal.GA_ReadOnly)
+            lat_path = path / "lat.rdr"
+            lon_path = path / "lon.rdr"
+            if full:
+                lat_path = lat_path.with_suffix('.rdr.full')
+                lon_path = lon_path.with_suffix('.rdr.full')
+            ds = gdal.Open(str(lat_path), gdal.GA_ReadOnly)
             lat = ds.GetRasterBand(1).ReadAsArray()
             ds = None
 
             # reading the lat/lon
-            ds = gdal.Open(str(path / "lon.rdr"), gdal.GA_ReadOnly)
+            ds = gdal.Open(str(lon_path), gdal.GA_ReadOnly)
             lon = ds.GetRasterBand(1).ReadAsArray()
             del ds
-            return LatLonArray(lat, lon)
+            # Full cannot use kdtree
+            use_kdtree = not full
+            return LatLonArray(lat, lon, check_dims, use_kdtree)
         elif self == LatLonFile.H5:
             geo_file = path / "geo_geometryRadar.h5"
             geo_data = h5py.File(geo_file)
             lat = geo_data['latitude'][()]
             lon = geo_data['longitude'][()]
-            return LatLonArray(lat, lon)
+            return LatLonArray(lat, lon, check_dims)
         elif self == LatLonFile.XML:
+            if check_dims:
+                print("dimensions cannot be checked for LatLon's in XML")
             return LatLonXML(path)
 
 class LatLon(ABC):
@@ -96,7 +106,9 @@ class LatLonXML(LatLon):
 
 
 class LatLonArray(LatLon):
-    def __init__(self, lat: np.ndarray, lon: np.ndarray):
+    def __init__(self, lat: np.ndarray, lon: np.ndarray, check_dims=None, use_kdtree=True):
+        if check_dims:
+            assert lat.shape == lon.shape == check_dims
         self.lat_arr = lat
         self.lon_arr = lon
         
@@ -118,16 +130,25 @@ class LatLonArray(LatLon):
         print("VERT RES (m)", dy_meters / dy_pix)
         print("HORIZ RES (m)", dx_meters / dx_pix)
 
-        self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
-        self.kd_tree = KDTree(self.flattened_coordinates)
+        self.use_kdtree = use_kdtree
+        if self.use_kdtree:
+            self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
+            self.kd_tree = KDTree(self.flattened_coordinates)
 
-    def find_closest_pixel(self, lat, lon):
-        _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+    def find_closest_pixel(self, lat, lon, max_dist_meters=35):
+        if self.use_kdtree:
+            _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+        else:
+            distances = np.sqrt((self.lat_arr - lat) ** 2 + (self.lon_arr - lon) ** 2)
+            closest_pixel_idx_flattened = np.argmin(distances)
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
+        # TODO: implement proper distance checking
+        dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
+        assert dist < max_dist_meters
         return closest_pixel_idx
 
 
-def compute_stats(alt_pred, alt_gt, points):
+def compute_stats(alt_pred, alt_gt):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
@@ -148,17 +169,6 @@ def compute_stats(alt_pred, alt_gt, points):
     alt_within_uncertainty_mask &= ~mask_is_great  # exclude ones that are great
     print("FOR ENTIRE INPUT (excluding nans):")
     _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask)
-
-    indices = np.argsort(chi_stat)
-    print(f"\nFOR INPUT EXCLUDING THE WORST 3 POINTS: {points[indices[-3:]]}")
-    _print_stats(
-        alt_pred[indices][:-3],
-        alt_gt[indices][:-3],
-        diff[indices][:-3],
-        chi_stat[indices][:-3],
-        mask_is_great[indices][:-3],
-        alt_within_uncertainty_mask[indices][:-3],
-    )
 
 
 def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask):
@@ -186,3 +196,80 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
+    
+def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
+    df_calm = pd.read_csv(calm_file, parse_dates=["date"])
+    df_calm = df_calm.sort_values("date", ascending=True)
+    df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
+    # TODO: can we just do 2006-2010? Before 1995-2013
+    # pandas version 2.1.1 has a bug where <= is not-inclusive. So we do: < pd.to_datetime(str(end_year + 1)
+    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] < pd.to_datetime(str(end_year + 1)))]
+
+    def try_float(x):
+        try:
+            return float(x)
+        except:
+            return np.nan
+
+    # TODO: fix in processor. handle 'w'?
+    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
+    # only grab ALTs from end of summer, which will be the last
+    # measurement in a year
+    df_calm["year"] = df_calm["date"].dt.year
+    df_peak_alt = df_calm.groupby(["point_id", "year"]).last().reset_index()
+    df_peak_alt['month'] = df_peak_alt['date'].dt.month
+    df_peak_alt['day'] = df_peak_alt['date'].dt.day
+    return df_peak_alt 
+
+def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
+    df_peak_alt = load_calm_data(calm_file, ignore_point_ids, start_year, end_year)
+    df_peak_alt = pd.merge(df_peak_alt, df_temp[['ddt', 'norm_ddt']], on=['year', 'month', 'day'], how='left')
+    df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
+    df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
+    df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
+    if ddt_scale:
+        df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
+    df_peak_alt['sqrt_norm_ddt'] = np.sqrt(df_peak_alt['norm_ddt'].values)
+    return df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
+
+def prepare_temp(temp_file, start_year, end_year):
+    df_temp = pd.read_csv(temp_file)
+    assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
+    df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
+    df_temps = []
+    for year, df_t in df_temp.groupby("year"):
+        compute_ddt_ddf(df_t)
+        df_temps.append(df_t)
+    df_temp = pd.concat(df_temps, verify_integrity=True)
+    max_ddt = df_temp["ddt"].max()
+    # print("overring max ddt")
+    # max_ddt = 15**2
+    df_temp["norm_ddt"] = df_temp["ddt"] / max_ddt
+    # df_temp[df_temp['norm_ddt'] > 1.0] = 1.0
+    return df_temp
+
+def get_norm_ddt(df_temp, date):
+    return df_temp.loc[date.year, date.month, date.day]["norm_ddt"]
+
+def compute_ddt_ddf(df):
+    tmp_col = "temp_2m_c"
+    freezing_point = 0.0
+    # Initialize counters
+    ddf = 0
+    ddt = 0
+    ddf_list = []
+    ddt_list = []
+
+    # Iterate over the temp_2m_c column
+    for i, temp in enumerate(df[tmp_col]):
+        if not np.isnan(temp):
+            if temp < freezing_point:
+                ddf += temp
+            else:
+                ddt += temp
+        ddf_list.append(ddf)
+        ddt_list.append(ddt)
+
+    df["ddf"] = ddf_list
+    df["ddt"] = ddt_list

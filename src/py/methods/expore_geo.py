@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
 import pandas as pd
-from schaefer import compute_bounding_box, plot_change
+from py.methods.run_mintpy_ts_analysis import compute_bounding_box, plot_change
 
 from utils import LatLon, LatLonGeo
 

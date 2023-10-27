@@ -10,7 +10,7 @@ import pandas as pd
 
 sys.path.append("..")
 from methods.utils import compute_stats
-from methods.soil_models import alt_to_surface_deformation, compute_alt_f_deformation
+from methods.soil_models import liu_deformation_from_alt, liu_alt_from_deformation
 
 
 # %%
@@ -28,7 +28,7 @@ rmse_preds = np.sqrt(np.square(alt_pred - alt_gt).mean())
 print(rmse_mean, rmse_preds)
 
 # %%
-sub_gt = np.array([alt_to_surface_deformation(alt) for alt in alt_gt])
+sub_gt = np.array([liu_deformation_from_alt(alt) for alt in alt_gt])
 
 # %%
 plt.scatter(sub_pred, sub_gt)
@@ -45,7 +45,7 @@ print(rmse_mean, rmse_preds)
 diff = mp - np.mean(sub_pred)
 sub_pred += diff
 # %%
-alt_pred2 = np.array([compute_alt_f_deformation(d) for d in sub_pred])
+alt_pred2 = np.array([liu_alt_from_deformation(d) for d in sub_pred])
 mp = alt_gt.mean()
 rmse_mean = np.sqrt(np.square(mp - alt_gt).mean())
 rmse_preds = np.sqrt(np.square(alt_pred2 - alt_gt).mean())

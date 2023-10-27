@@ -8,5 +8,6 @@
         "./../../../permafrost-prediction-shared-data:/permafrost-prediction-shared-data",
         "./MintPy:/MintPy"
     ],
-    "shareVSCode": true
+    "shareVSCode": true,
+    "shareX11": true
 }

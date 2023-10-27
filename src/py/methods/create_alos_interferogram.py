@@ -2,9 +2,6 @@ import os
 import pathlib
 import click
 import xml.etree.ElementTree as ET
-import isce2
-import tqdm
-from stripmapApp import Insar
 
 from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR, ISCE2_OUTPUTS_DIR
 
@@ -72,7 +69,7 @@ def get_alos_imagefile_leaderfile(alos):
         if f.startswith("LED-"):
             assert leaderfile is None
             leaderfile = f
-        elif f.startswith("IMG-"):
+        elif f.startswith("IMG-HH"):
             assert imagefile is None
             imagefile = f
     assert imagefile is not None, f"Could not find imagefile in: {files}"

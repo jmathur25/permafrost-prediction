@@ -3,8 +3,8 @@ import shutil
 from typing import Tuple
 import click
 import asf_search as asf
-from consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
-from utils import prompt_user
+from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
+from data.utils import prompt_user
 import re
 
 
@@ -13,6 +13,10 @@ import re
 @click.argument("password")
 @click.argument("granules", nargs=-1)
 def alos_palsar_granule(username, password, granules: Tuple[str]):
+    _download_alos_palsar_granule(username, password, granules)
+    
+
+def _download_alos_palsar_granule(username, password, granules: Tuple[str]):
     assert len(granules) > 0
     chosen_granules = []
     savedirs = []
@@ -39,7 +43,7 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
     results.download(path=ALOS_PALSAR_DATA_DIR, session=session)
 
     prefix = "ALPSRP"
-    all_dowloaded_files = set(
+    all_downloaded_files = set(
         [f for f in os.listdir(ALOS_PALSAR_DATA_DIR) if not os.path.isdir(ALOS_PALSAR_DATA_DIR / f)]
     )
     print("Moving downloads into respective folders")
@@ -49,7 +53,7 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
         n1 = int(granule[len(prefix) : -4])
         n2 = int(granule[-4:])
         matched_files = []
-        for f in all_dowloaded_files:
+        for f in all_downloaded_files:
             # (hack) use regex to find which files were downloaded for a particular granule
             match = re.match(f".*{n1}.*{n2}.*", f)
             if match is None:
@@ -73,14 +77,17 @@ def alos_palsar_granule(username, password, granules: Tuple[str]):
                 l1_folders.append(l1_0_file_savedir)
             else:
                 shutil.move(str(ALOS_PALSAR_DATA_DIR / f), str(other_savedir))
-            all_dowloaded_files.remove(f)
+            all_downloaded_files.remove(f)
         assert found_l1_0_file, f"Found no raw data file (with L1.0 in its name) for {granule}"
 
-    assert len(all_dowloaded_files) == 0, f"Could not match these files: {all_downloaded_files}"
+    assert len(all_downloaded_files) == 0, f"Could not match these files: {all_downloaded_files}"
+    
+    l1_folders = [savedir / ALOS_L1_0_DIRNAME for savedir in savedirs]
 
     print("Extracting the raw (L1.0) data")
     for l1_folder in l1_folders:
         l1_folder = l1_folder.absolute()
-        cmd = f"python3 /opt/isce2/src/isce2/contrib/stack/stripmapStack/prepRawALOS.py -i {l1_folder}"
+        fp = '/root/tools/mambaforge/share/isce2/stripmapStack/prepRawALOS.py' # /opt/isce2/src/isce2/contrib/stack/stripmapStack/prepRawALOS.py
+        cmd = f"python3 {fp} -i {l1_folder}"
         res = os.system(cmd)
         assert res == 0, "prepRawALOS failed"
