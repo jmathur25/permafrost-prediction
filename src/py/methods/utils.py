@@ -103,6 +103,46 @@ class LatLonXML(LatLon):
         assert x >= 0
         return y, x
     
+# TODO: merge with XML?
+class LatLonFunc(LatLon):
+    def __init__(self, top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon, lat_spacing, lon_spacing, chunk_size=None):
+        # Lat decreases as y increases for images
+        assert lat_spacing < 0
+        # Lon increases as x increases
+        assert lon_spacing > 0
+        self.top_left_lat = top_left_lat
+        self.top_left_lon = top_left_lon
+        self.bottom_right_lat = bottom_right_lat
+        self.bottom_right_lon = bottom_right_lon
+        self.lat_spacing = lat_spacing
+        self.lon_spacing = lon_spacing
+        self.chunk_size = chunk_size
+        
+        vert_res = (
+            haversine((self.top_left_lat, self.top_left_lon), (self.top_left_lat + 1000 * self.lat_spacing, self.top_left_lon)) / 1000
+        ) * 1000
+        horiz_res = (
+            haversine((self.top_left_lat, self.top_left_lon), (self.top_left_lat, 1000 * self.lon_spacing + self.top_left_lon)) / 1000
+        ) * 1000
+        if self.chunk_size is not None:
+            vert_res = vert_res * self.chunk_size[0]
+            horiz_res = horiz_res * self.chunk_size[1]
+        print("VERT RES (m):", vert_res)
+        print("HORIZ RES (m):", horiz_res)
+    
+    
+    def find_closest_pixel(self, lat, lon):
+        assert self.bottom_right_lat <= lat <= self.top_left_lat 
+        assert self.top_left_lon <= lon <= self.bottom_right_lon 
+        y = int((lat - self.top_left_lat) / self.lat_spacing)
+        x = int((lon - self.top_left_lon) / self.lon_spacing)
+        if self.chunk_size is not None:
+            y = y // self.chunk_size[0]
+            x = x // self.chunk_size[1]
+        assert y >= 0
+        assert x >= 0
+        return y, x
+    
 
 
 class LatLonArray(LatLon):
@@ -146,8 +186,8 @@ class LatLonArray(LatLon):
         dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
         assert dist < max_dist_meters
         return closest_pixel_idx
-
-
+    
+    
 def compute_stats(alt_pred, alt_gt):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
@@ -273,3 +313,18 @@ def compute_ddt_ddf(df):
 
     df["ddf"] = ddf_list
     df["ddt"] = ddt_list
+
+def compute_bounding_box(pixels, n=10):
+    # Initialize min and max coordinates for y and x
+    min_y = np.min(pixels[:, 0])
+    min_x = np.min(pixels[:, 1])
+    max_y = np.max(pixels[:, 0])
+    max_x = np.max(pixels[:, 1])
+
+    # Add pixel margin to each side
+    min_y = max(min_y - n, 0)
+    min_x = max(min_x - n, 0)
+    max_y += n
+    max_x += n
+
+    return ((min_y, min_x), (max_y, max_x))

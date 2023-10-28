@@ -22,7 +22,7 @@ from methods.resalt import ReSALT, ReSALT_Type
 # TODO: fix module-ing
 sys.path.append("/permafrost-prediction/src/py")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
-from methods.utils import LatLonFile, compute_stats, prepare_calm_data, prepare_temp
+from methods.utils import LatLonFile, compute_stats, get_norm_ddt, prepare_calm_data, prepare_temp
 from methods.gt_phase_unwrap import solve_best_phase_unwrap
 from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
@@ -302,10 +302,6 @@ def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_
     return dates, ground_def
 
 
-def get_norm_ddt(df_temp, date):
-    return df_temp.loc[date.year, date.month, date.day]["norm_ddt"]
-
-
 def get_ddt(df_temp, date):
     return df_temp.loc[date.year, date.month, date.day]["ddt"]
 
@@ -376,22 +372,6 @@ def ideal_deformation_to_phase(ideal_deformation: np.array, incidence_angle: flo
     ideal_los_def = ideal_deformation * np.cos(incidence_angle)
     ideal_igram_unw_phase = ideal_los_def / wavelength * (4 * np.pi)
     return ideal_igram_unw_phase
-    
-
-def compute_bounding_box(pixels, n=10):
-    # Initialize min and max coordinates for y and x
-    min_y = np.min(pixels[:, 0])
-    min_x = np.min(pixels[:, 1])
-    max_y = np.max(pixels[:, 0])
-    max_x = np.max(pixels[:, 1])
-
-    # Add 50-pixel margin to each side
-    min_y = max(min_y - n, 0)
-    min_x = max(min_x - n, 0)
-    max_y += n
-    max_x += n
-
-    return ((min_y, min_x), (max_y, max_x))
 
 
 if __name__ == "__main__":

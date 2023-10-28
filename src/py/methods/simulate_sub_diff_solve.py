@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 
-from methods.soil_models import SoilMoistureModel
+from methods.soil_models import ConstantWaterSMM, SoilMoistureModel
 from scipy.stats import pearsonr
 
 
@@ -28,6 +28,10 @@ def find_best_alt_diff(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: S
     return alt_diff
 
 if __name__ == '__main__':
-    sqrt_ddt_ratio = 3.074552276325944
-    ret = find_best_alt_diff([0.007657], sqrt_ddt_ratio)
+    ddt_ref = 225.0
+    ddt_sec = 10.0
+    sqrt_ddt_ref = np.sqrt(ddt_ref)
+    sqrt_ddt_sec = np.sqrt(ddt_sec)
+    smm = ConstantWaterSMM(s=0.5)
+    ret = find_best_alt_diff([0.01], sqrt_ddt_ratio)
     print(ret)

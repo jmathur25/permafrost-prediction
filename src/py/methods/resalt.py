@@ -8,7 +8,7 @@ import pandas as pd
 
 from methods.soil_models import SoilMoistureModel
 from methods.simulate_sub_diff_solve import find_best_alt_diff
-from methods.run_analysis import get_norm_ddt
+from methods.utils import get_norm_ddt
 
 
 class ReSALT_Type(enum.Enum):
