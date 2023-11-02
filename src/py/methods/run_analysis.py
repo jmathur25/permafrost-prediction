@@ -39,12 +39,14 @@ def schaefer_method():
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
     paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
-    ignore_point_ids = paper_specified_ignore + data_specified_ignore
+    data_specified_ignore = [21, 43, 55]
+    nan_ignore = [34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
+    ignore_point_ids = paper_specified_ignore + data_specified_ignore + nan_ignore
     calib_point_id = 61
     start_year = 2006
     end_year = 2010
-    rtype = ReSALT_Type.LIU_SCHAEFER
+    rtype = ReSALT_Type.JATIN
+    plot = ("SCReSALT Results", 'sc_resalt_results.png')
     
     # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
     # clarity I will make both use same year set.
@@ -146,7 +148,11 @@ def schaefer_method():
         alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt['sqrt_norm_ddt'].values
     
     alt_gt = df_alt_gt["alt_m"].values
-    compute_stats(alt_pred, alt_gt)
+    compute_stats(alt_pred, alt_gt, plot=plot)
+    
+    plt.scatter(alt_gt, alt_pred)
+    plt.xlabel("ALT Ground-Truth")
+    plt.ylabel("ALT Prediction")
 
     # df_alt_gt.to_csv("df_alt_gt.csv", index=True)
     # np.save("subsidence", E)

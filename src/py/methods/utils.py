@@ -3,6 +3,7 @@ from enum import Enum
 import pathlib
 from haversine import haversine, Unit
 from isce.components import isceobj
+from matplotlib import pyplot as plt
 import numpy as np
 from osgeo import gdal
 import pandas as pd
@@ -188,12 +189,14 @@ class LatLonArray(LatLon):
         return closest_pixel_idx
     
     
-def compute_stats(alt_pred, alt_gt):
+def compute_stats(alt_pred, alt_gt, plot=None):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
     print(f"number of nans GT: {nan_mask_2.sum()}/{len(alt_pred)}")
-    not_nan_mask = ~(nan_mask_1 | nan_mask_2)
+    is_nan = (nan_mask_1 | nan_mask_2)
+    not_nan_mask = ~is_nan
+    print("NAN LOCS:", np.argwhere(is_nan))
     alt_pred = alt_pred[not_nan_mask]
     alt_gt = alt_gt[not_nan_mask]
     diff = alt_pred - alt_gt
@@ -208,10 +211,10 @@ def compute_stats(alt_pred, alt_gt):
     alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
     alt_within_uncertainty_mask &= ~mask_is_great  # exclude ones that are great
     print("FOR ENTIRE INPUT (excluding nans):")
-    _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask)
+    _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask, plot)
 
 
-def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask):
+def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask, plot):
     print("avg, std ALT pred", np.mean(alt_pred), np.std(alt_pred))
     print("avg, std ALT GT", np.mean(alt_gt), np.std(alt_gt))
 
@@ -236,6 +239,15 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
+    
+    if plot:
+        plot_title, plot_savepath = plot
+        plt.scatter(alt_gt, alt_pred)
+        plt.xlabel("ALT Ground-Truth (m)")
+        plt.ylabel("ALT Prediction (m)")
+        plt.title(plot_title)
+        # plt.text(0.05, 0.95, f'Pearson R: {pearson_corr:.4f}', transform=plt.gca().transAxes)
+        plt.savefig(plot_savepath)
     
 def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
