@@ -43,6 +43,10 @@ class SoilMoistureModel(ABC):
     @abstractmethod
     def alt_from_deformation(self, deformation: float) -> float:
         pass
+    
+    @abstractmethod
+    def porosity(self, z: float) -> float:
+        pass
 
 
 class LiuSMM(SoilMoistureModel):
@@ -76,15 +80,101 @@ class LiuSMM(SoilMoistureModel):
         result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
         assert result.converged
         return result.root
+    
+    def porosity(self, z):
+        return liu_resalt_integrand(z)
 
 
 class ConstantWaterSMM(SoilMoistureModel):
-    def __init__(self, s: float):
-        assert 0 <= s <= 1
-        self.s = s
+    def __init__(self, p: float):
+        assert 0 <= p <= 1
+        self.p = p
     
     def deformation_from_alt(self, alt: float) -> float:
-        return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * alt * self.s
+        return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * alt * self.p
     
     def alt_from_deformation(self, deformation: float) -> float:
-        return deformation * DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE) / self.s
+        return deformation * DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE) / self.p
+    
+    def porosity(self, z):
+        return self.p
+
+
+class SCReSALT_Invalid_SMM(SoilMoistureModel):
+    def __init__(self):
+        x1 = 0.01
+        x2 = 0.04
+
+        f1_slope = 0.7/10
+        f3_slope = 0.1/10
+
+        y1 = 1/f3_slope*f1_slope*x1
+        print("Transitions from 1st slope to 2nd slope between", x2, "and", y1)
+        assert y1 > x2
+        F1 = _Linear(f1_slope, 0.0)
+
+        def solve_quadratic_and_align_funcs(x2, y1, F1, f3_slope):
+            a = (F1.m - f3_slope)/(2*(x2-y1))
+            b = F1.m - 2*a*x2
+            c = F1(x2) - a*(x2**2) - b*x2
+            F2 = _Quadratic(a, b, c)
+            
+            f3_start = F2(y1) - f3_slope * y1
+            F3 = _Linear(f3_slope, f3_start)
+            return F2, F3
+
+        F2, F3 = solve_quadratic_and_align_funcs(x2, y1, F1, f3_slope)
+        
+        self.F1 = F1
+        self.F2 = F2
+        self.F3 = F3
+        self.x2 = x2
+        self.y1 = y1
+
+        print("Linear from", x1, self.x2, "with", self.F1.m, self.F1.b)
+        print("Quad from", self.x2, y1, "with", self.F2.a, self.F2.b, self.F2.c)
+        print("Linear from", y1, "with", self.F3.m, self.F3.b)
+        
+    def deformation_from_alt(self, alt: float) -> float:
+        if alt <= self.x2:
+            return self.F1(alt)
+        elif alt <= self.y1:
+            return self.F2(alt)
+        else:
+            return self.F3(alt)
+    
+    def alt_from_deformation(self, deformation: float) -> float:
+        raise ValueError("unimplemented")
+    
+    def porosity(self, z: float):
+        if z <= self.x2:
+            v = self.F1.get_derivative(z)
+        elif z <= self.y1:
+            v = self.F2.get_derivative(z)
+        else:
+            v = self.F3.get_derivative(z)
+        return DENSITY_ICE * v / (DENSITY_WATER - DENSITY_ICE)
+
+class _Linear:
+    def __init__(self, m, b):
+        self.m = m
+        self.b = b
+        
+    def __call__(self, x):
+        return self.m * x + self.b
+    
+    def get_derivative(self, x):
+        return self.m
+    
+
+class _Quadratic:
+    def __init__(self, a, b, c):
+        self.a = a
+        self.b = b
+        self.c = c
+        
+    def __call__(self, x):
+        return self.a * (x**2) + self.b * x + self.c
+    
+    def get_derivative(self, x):
+        return 2*self.a*x + self.b

@@ -40,13 +40,13 @@ def schaefer_method():
 
     paper_specified_ignore = [7, 110, 121]
     data_specified_ignore = [21, 43, 55]
-    nan_ignore = [34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
+    nan_ignore = [] #[34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore + nan_ignore
     calib_point_id = 61
     start_year = 2006
     end_year = 2010
     rtype = ReSALT_Type.JATIN
-    plot = ("SCReSALT Results", 'sc_resalt_results.png')
+    plot = ("SCReSALT Results All Data", 'sc_resalt_results_full.png')
     
     # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
     # clarity I will make both use same year set.
