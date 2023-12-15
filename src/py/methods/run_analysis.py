@@ -204,6 +204,11 @@ def process_igram(df_calm_points, use_geo, n_horiz, n_vert, isce_output_dir, nee
         pickle_isce_obj = pickle.load(fp)
     radar_wavelength = pickle_isce_obj["reference"]["instrument"]["radar_wavelength"]
     incidence_angle = pickle_isce_obj["reference"]["instrument"]["incidence_angle"] * np.pi / 180
+    # Using inc_explore.py, figured this out. Incidence angle mostly seems the same and is close
+    # to the extracted number, so I am not including parsing it in this analysis. I'm not even
+    # sure how to get this value from ISCE2. Mintpy gets it using the stack stripmap processor.
+    # print("OVERRIDING INCIDENCE ANGLE")
+    # incidence_angle = 0.701683
 
     print("radar wavelength (meteres):", radar_wavelength)
     print("incidence angle (radians):", incidence_angle)
