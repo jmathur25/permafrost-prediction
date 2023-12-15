@@ -35,6 +35,13 @@ def liu_resalt_integrand(z):
     S = 1.0
     return P * S
 
+def invalid_smm(z):
+    if z < 1e-3:
+        return 0.9
+    a = 10/9 - 0.01
+    p = min(0.9, 1.0/(z + a))
+    return p
+
 class SoilMoistureModel(ABC):
     @abstractmethod
     def deformation_from_alt(self, alt: float) -> float:
@@ -83,6 +90,89 @@ class LiuSMM(SoilMoistureModel):
     
     def porosity(self, z):
         return liu_resalt_integrand(z)
+    
+    
+class ChenSMM(SoilMoistureModel):
+    def __init__(self):
+        pass
+    
+    
+    def deformation_from_alt(self, alt):
+        integral, error = quad(self.porosity, 0, alt)
+        assert error < 1e-5
+        return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * integral
+        
+        
+    def alt_from_deformation(self, deformation):
+        assert deformation > 0, "Must provide a positive deformation in order to compute ALT"
+        integral_val = deformation * (DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE))
+
+        # Define the function to find its root
+        def objective(x, target):
+            integral, _ = quad(self.porosity, 0, x)
+            return integral - target
+
+        result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
+        assert result.converged
+        return result.root
+    
+    def som(self, z):
+        om_neg_inf = 0.8
+        om_inf = 0.05
+        B = 50
+        z_org = 0.15
+        som = om_neg_inf + (om_inf - om_neg_inf) / (1 + np.exp(-B*(z - z_org)))
+        return som
+    
+    def porosity(self, z):
+        som = self.som(z)
+        p_bm = 1.5
+        r = 0.05
+        p_b = p_bm * np.exp(-r * som)
+        fc = 0.9887 * np.exp(-5.512 * p_b)
+        p_m =  2.65
+        p_s = 1.8
+        p_f = 0.6
+        porosity = 1 - p_b / p_m * (1 - som) # - p_b / p_s * som * (1 - fc) - p_b / p_f * som * fc
+        return porosity
+        
+
+class SCReSALT_Invalid_SMM2(SoilMoistureModel):
+    def __init__(self):
+        pass
+    
+    
+    def deformation_from_alt(self, alt):
+        # paper assumes exponential decay from 90% porosity to 45% porosity
+        # in general:
+        # P(z) = P_f + (Po - Pf)*e^(-kz)
+        # where P(f) = final porosity
+        #       P(o) = intial porosity
+        #       z is rate of exponential decay
+        # Without reading citation, let us assume k = 1
+        # Definite integral is now: https://www.wolframalpha.com/input?i=integrate+a+%2B+be%5E%28-kz%29+dz+from+0+to+x
+        # integral, error = quad(invalid_smm, 0, alt)
+        # assert error < 1e-5
+        # return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * integral
+        return np.clip(np.log(alt*100) + 0.1, 0.0, 10.0)
+
+
+    def alt_from_deformation(self, deformation):
+        raise ValueError()
+        # assert deformation > 0, "Must provide a positive deformation in order to compute ALT"
+        # integral_val = deformation * (DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE))
+
+        # # Define the function to find its root
+        # def objective(x, target):
+        #     integral, _ = quad(invalid_smm, 0, x)
+        #     return integral - target
+
+        # result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
+        # assert result.converged
+        # return result.root
+    
+    def porosity(self, z):
+        return invalid_smm(z)
 
 
 class ConstantWaterSMM(SoilMoistureModel):

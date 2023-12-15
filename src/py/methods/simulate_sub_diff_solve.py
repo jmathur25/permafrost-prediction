@@ -20,6 +20,14 @@ def generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, uppe
 
 # TODO: what to do if thaw has not started?
 def find_best_alt_diff(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel):
+    # print(sqrt_ddt_ref, sqrt_ddt_sec)
+    # min_v, max_v = sqrt_ddt_sec, sqrt_ddt_ref
+    # if min_v > max_v:
+    #     max_v, min_v = min_v, max_v
+    # thresh = 0.2
+    # if min_v < thresh:
+    #     print("Invoking thresh")
+    #     return [smm.alt_from_deformation(d) if d > 1e-3 else 0 for d in deformation_per_pixel]
     h1s, h2s, subsidences = generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm)
     # TODO: find min...
     sorter = np.argsort(subsidences)
@@ -31,6 +39,7 @@ def find_best_alt_diff(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: S
             idx = len(subsidences) - 1
         alt_diff.append(h2s[idx] - h1s[idx])
     return alt_diff
+
 
 if __name__ == '__main__':
     ddt_ref = 225.0

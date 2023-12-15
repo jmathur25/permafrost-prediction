@@ -24,7 +24,7 @@ class ReSALT:
         self.df_temp = df_temp
         self.calib_idx = calib_idx
         self.calib_deformation = calib_deformation
-        self.calib_alt = smm.alt_from_deformation(self.calib_deformation)
+        self.calib_alt = smm.alt_from_deformation(self.calib_deformation) if self.calib_deformation else None
         self.smm = smm
         self.rtype = rtype
      
@@ -50,24 +50,26 @@ class ReSALT:
             
             if self.rtype == ReSALT_Type.LIU_SCHAEFER:
                 # Solve as deltas over calibration deformation
-                delta = deformation_per_pixel[self.calib_idx]
-                lhs = deformation_per_pixel - delta
+                if self.calib_idx is not None:
+                    delta = deformation_per_pixel[self.calib_idx]
+                    lhs = deformation_per_pixel - delta
+                else:
+                    lhs = deformation_per_pixel
             elif self.rtype == ReSALT_Type.JATIN:
-                # TODO: easily scales to calib being a non-thaw point like gravel, as all we ultimately do
-                # is calculate subsidence within an image?
-                expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
-                expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
-                expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
-                expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
-                expected_calib_def = expected_deformation_ref - expected_deformation_sec
-                
-                # Scale the deformations to align with the expected calibration deformation
-                calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
-                deformation_per_pixel = deformation_per_pixel + calib_node_delta
+                if self.calib_alt:
+                    expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
+                    expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
+                    expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
+                    expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
+                    expected_calib_def = expected_deformation_ref - expected_deformation_sec
+                    
+                    # Scale the deformations to align with the expected calibration deformation
+                    calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
+                    deformation_per_pixel = deformation_per_pixel + calib_node_delta
                 
                 lhs = find_best_alt_diff(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
             else:
-                raise ValueError()
+                raise ValueError("Unknown rtype:", self.rtype)
                 
                 
             lhs_all[i,:] = lhs
@@ -100,8 +102,9 @@ class ReSALT:
         if self.rtype == ReSALT_Type.LIU_SCHAEFER:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
-            delta_E = self.calib_deformation - E[self.calib_idx]
-            E = E + delta_E
+            if self.calib_idx:
+                delta_E = self.calib_deformation - E[self.calib_idx]
+                E = E + delta_E
             alt_pred = []
             for e in E:
                 if e < 1e-3:

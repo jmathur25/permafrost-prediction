@@ -185,7 +185,7 @@ class LatLonArray(LatLon):
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
         # TODO: implement proper distance checking
         dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
-        assert dist < max_dist_meters
+        assert dist < max_dist_meters, f"Closest point is {dist} away, which exceeds the max dist"
         return closest_pixel_idx
     
     

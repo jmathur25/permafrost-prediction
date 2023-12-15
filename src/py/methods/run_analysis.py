@@ -46,7 +46,7 @@ def schaefer_method():
     start_year = 2006
     end_year = 2010
     rtype = ReSALT_Type.JATIN
-    plot = ("SCReSALT Results All Data", 'sc_resalt_results_full.png')
+    plot = None#("SCReSALT Results All Data", 'sc_resalt_results_full.png')
     
     # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
     # clarity I will make both use same year set.
