@@ -65,7 +65,7 @@ def schaefer_method():
 
     # Use the geo-corrected interferogram products instead of radar geometry
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
-    use_geo = False
+    use_geo = True
 
     # Scale measured and estimated ALTs by the DDT at measure time (probe or SAR) to be the one at end-of-season when thaw is maximized
     # TODO: should scaling subsidence be independent of scaling ALT? Technically we could just scale deformations
