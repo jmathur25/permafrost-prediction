@@ -45,8 +45,8 @@ def schaefer_method():
     calib_point_id = 61
     # Schaefer 2015 does a strange thing where it uses the ALT from 1995 to 2013, but
     # the interferograms are only from 2006 to 2010. Hence we need these numbers.
-    start_year = 2006
-    end_year = 2010
+    start_year = 1995
+    end_year = 2013
     # start_year_temp = 2006
     # end_year_temp = 2010
     rtype = ReSALT_Type.JATIN
@@ -89,8 +89,9 @@ def schaefer_method():
         # For Jatin, we need to report the calibration subsidence as if it happened during max thaw, not
         # when the measurement happened. To calculate the right calibration subsidence, we first need
         # to scale the calibration ALT to its average expected value across the years
-        ddts = df_temp[['norm_ddt']].groupby('year').last()
-        end_of_year_sqrt_ddt = np.mean(np.sqrt(ddts['norm_ddt'].values))
+        end_of_year_ddts = df_temp[['norm_ddt']].groupby('year').last()
+        end_of_year_sqrt_ddt = np.mean(np.sqrt(end_of_year_ddts['norm_ddt'].values))
+        # Stefan-scaling of ALT
         upscale = end_of_year_sqrt_ddt/df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]['sqrt_norm_ddt'].mean()
         calib_alt = calib_alt*upscale
     liu_smm = LiuSMM()

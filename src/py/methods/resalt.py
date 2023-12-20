@@ -82,24 +82,27 @@ class ReSALT:
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
         
-        # if self.rtype == ReSALT_Type.JATIN:
-        #     # Jatin mode can induce nans
-        #     nans = np.argwhere(np.isnan(alt_pred))
-        #     if len(nans) > 0:
-        #         resolved = 0
-        #         for i in nans[:,0]:
-        #             lhs_i = lhs_all[:,i]
-        #             nan_mask = np.isnan(lhs_i)
-        #             if np.mean(nan_mask) > 0.5:
-        #                 continue
-        #             not_nan_mask = ~nan_mask
-        #             alt_i = np.linalg.pinv(rhs_all[not_nan_mask]) @ lhs_i[not_nan_mask]
-        #             alt_pred[i] = alt_i
-        #             resolved += 1
-        #         print("Number of pixels with nans in least-squares inversion:", len(nans))
         assert np.isnan(sol).sum() == 0
-
-        if self.rtype == ReSALT_Type.LIU_SCHAEFER:
+        if self.rtype == ReSALT_Type.JATIN:
+            # alt_pred = sol[0, :]
+            # # TOOD: explain
+            # nans = np.argwhere(np.isnan(alt_pred))
+            # if len(nans) > 0:
+            #     resolved = 0
+            #     for i in nans[:,0]:
+            #         lhs_i = lhs_all[:,i]
+            #         nan_mask = np.isnan(lhs_i)
+            #         if np.mean(nan_mask) > 0.8:
+            #             # Too many nans so bail.
+            #             continue
+            #         not_nan_mask = ~nan_mask
+            #         alt_i = np.linalg.pinv(rhs_all[not_nan_mask]) @ lhs_i[not_nan_mask]
+            #         assert alt_i.shape == (1,)
+            #         alt_pred[i] = alt_i[0]
+            #         resolved += 1
+            #     print(f"Resolved {resolved}/{len(nans)} pixels with nans in least-squares inversion")
+            alt_pred = sol[0, :]
+        elif self.rtype == ReSALT_Type.LIU_SCHAEFER:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
             if self.calib_idx:
@@ -112,10 +115,7 @@ class ReSALT:
                     continue
                 alt = self.smm.alt_from_deformation(e)
                 alt_pred.append(alt)
-
             alt_pred = np.array(alt_pred)
-        elif self.rtype == ReSALT_Type.JATIN:
-            alt_pred = sol[0, :]
         else:
             raise ValueError()
         return alt_pred
