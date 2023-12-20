@@ -39,12 +39,16 @@ def schaefer_method():
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
     paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [21, 43, 55]
+    data_specified_ignore = [23, 45, 57]
     nan_ignore = [] #[34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore + nan_ignore
     calib_point_id = 61
+    # Schaefer 2015 does a strange thing where it uses the ALT from 1995 to 2013, but
+    # the interferograms are only from 2006 to 2010. Hence we need these numbers.
     start_year = 2006
     end_year = 2010
+    # start_year_temp = 2006
+    # end_year_temp = 2010
     rtype = ReSALT_Type.JATIN
     plot = None#("SCReSALT Results All Data", 'sc_resalt_results_full.png')
     

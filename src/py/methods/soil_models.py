@@ -3,7 +3,6 @@ from scipy.integrate import quad
 from scipy.optimize import root_scalar
 from abc import ABC, abstractmethod
 
-
 DENSITY_WATER = 0.997  # g/m^3
 DENSITY_ICE = 0.9168  # g/cm^3
 

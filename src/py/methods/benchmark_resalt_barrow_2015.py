@@ -40,11 +40,11 @@ gdf.plot()
 # %%
 calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
 temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
-start_year = 2006
-end_year = 2010
+start_year = 1995
+end_year = 2013
 
 paper_specified_ignore = [7, 110, 121]
-data_specified_ignore = [21, 43, 55]
+data_specified_ignore = [23, 45, 57]
 ignore_point_ids = paper_specified_ignore + data_specified_ignore
 ddt_scale = False
 # %%
@@ -63,8 +63,12 @@ def find_match(row):
     mask = gdf.contains(point)
     indices = np.argwhere(mask)
     if len(indices) == 0:
-        print(f"Got no matches for {row}")
-        return np.nan
+        # print(f"Got no matches for {row}")
+        # return np.nan
+        # Above commented code is what I did before I knew which points were excluded. The paper
+        # said 6 points were excluded but only told us about 3. Once I figured out the 3, I
+        # made `data_specified_ignore` and made this an error here.
+        raise ValueError()
     elif len(indices) == 1:
         return indices[0][0]
     else:

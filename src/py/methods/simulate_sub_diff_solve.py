@@ -3,13 +3,19 @@ import numpy as np
 
 from methods.soil_models import ConstantWaterSMM, SoilMoistureModel
 from scipy.stats import pearsonr
+from scipy.optimize import fsolve
 
 
-def generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_alt_limit=1.0, N=1000):
-    sqrt_ddt_ratio = sqrt_ddt_ref/sqrt_ddt_sec
+def generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit=1.0, N=1000):
+    Q = sqrt_ddt_ref/sqrt_ddt_sec
     # assert sqrt_ddt_ratio > 1.0
-    h1s = np.linspace(0.01, upper_alt_limit, num=N)
-    h2s = sqrt_ddt_ratio * h1s
+    if Q > 1.0:
+        # Under this condition, h1 < h2 so to make h2 upper bounded by `upper_thaw_depth_limit`,
+        # we need h1 upper bounded by `upper_thaw_depth_limit/Q`
+        # Under the opposite condition, h1 > h2 so `upper_thaw_depth_limit` is correct as it is.
+        upper_thaw_depth_limit = upper_thaw_depth_limit/Q
+    h1s = np.linspace(0.001, upper_thaw_depth_limit, num=N)
+    h2s = Q * h1s
     subsidences = []
     for h2, h1 in zip(h2s, h1s):
         sub = smm.deformation_from_alt(h2) - smm.deformation_from_alt(h1)

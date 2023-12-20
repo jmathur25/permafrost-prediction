@@ -42,12 +42,12 @@ def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None):
     upper_alt_limit = zs[-1]/sqrt_ddt_ratio
     h1s, h2s, subsidences = generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_alt_limit, N=100)
     ax.plot(h2s - h1s, subsidences, color=color)
-    ax.set_title(fr"ALT difference vs subsidence difference for $\sqrt{{\frac{{ADDT_{{t_i}}}}{{ADDT_{{t_j}}}}}} = {sqrt_ddt_ratio}$")
-    ax.set_xlabel(r"$ALT_{t_i} - ALT_{t_j} \, (m)$")  # Thin space
-    ax.set_ylabel("Subsidence Difference (m)")
+    ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $Q = {sqrt_ddt_ratio}$")
+    ax.set_xlabel(r"$h_{t_i} - h_{t_j} \, (m)$")  # Thin space
+    ax.set_ylabel(r"$\delta_{t_i} - \delta_{t_j} \, (m)$")
     if ylim is not None:
         ax.set_ylim(*ylim)
-    # ax.set_xlim(0.0, 0.3)
+    ax.set_xlim(0.0, 0.3)
 
 # %%
 zs = np.linspace(0.0, 1.0, 1000)
@@ -62,16 +62,18 @@ fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12))
 # TODO: plot limit to 0.5m, and figure out weird curve for green porosity
 ax1.plot(zs, ps_mixed_model, color='b', label='Mixed Soil Model')
 ax1.plot(zs, ps_constant, color='r', label='Constant Porosity Model')
-ax1.set_xlabel("ALT (m)")
+ax1.set_xlabel("Thaw Depth (m)")
 ax1.set_ylabel("Porosity")
 ax1.set_xlim(0.0, 0.5)
+ax1.set_title("Porosity vs Thaw Depth")
 
 # Second plot: ALT vs Subsidence
 ax2.plot(zs, subs_mixed_model, color='b', label='Mixed Soil Model')
 ax2.plot(zs, subs_const_water_model, color='r', label='Constant Porosity Model')
-ax2.set_xlabel("ALT (m)")
+ax2.set_xlabel("Thaw Depth (m)")
 ax2.set_ylabel("Subsidence (m)")
 ax2.set_xlim(0.0, 0.5)
+ax2.set_title("Subsidence vs Thaw Depth")
 
 handles, labels = ax1.get_legend_handles_labels()
 fig.legend(handles, labels, loc='upper center', ncol=2)
@@ -86,7 +88,7 @@ plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax4)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust subplots to fit into the figure area.
 plt.show()
-fig.savefig("alt_porosity_subsidence_plots.png")
+fig.savefig("thaw_depth_porosity_subsidence_plots.png")
 
 # %%
 ps_chen = np.array([chen_smm.porosity(z) for z in zs])
