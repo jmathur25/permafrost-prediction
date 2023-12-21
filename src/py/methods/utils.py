@@ -200,7 +200,6 @@ def compute_stats(alt_pred, alt_gt, plot=None):
     alt_pred = alt_pred[not_nan_mask]
     alt_gt = alt_gt[not_nan_mask]
     diff = alt_pred - alt_gt
-    print("ABS DIFF MEAN", np.mean(np.abs(diff)))
     e = 0.079
     # computing proper uncertainty involves propogating model parameter error down
     # (see https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2011JF002041)
@@ -210,7 +209,8 @@ def compute_stats(alt_pred, alt_gt, plot=None):
     mask_is_great = chi_stat < 1
     alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
     alt_within_uncertainty_mask &= ~mask_is_great  # exclude ones that are great
-    print("FOR ENTIRE INPUT (excluding nans):")
+    
+    print("METRICS (excluding nans):")
     _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask, plot)
 
 
@@ -236,6 +236,9 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     pearson_corr, _ = pearsonr(alt_pred, alt_gt)
     print(f"Pearson R: {pearson_corr}")
+    
+    mae = np.mean(np.abs(diff))
+    print("MAE:", mae)
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
