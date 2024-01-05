@@ -12,6 +12,10 @@ DENSITY_ICE = 0.9168  # g/cm^3
 
 
 def liu_resalt_integrand(z):
+    """
+    Described in "Estimating 1992–2000 average active layer thickness on the Alaskan North Slope from remotely sensed surface subsidence".
+    This characterizes the mixed soil model in the paper.
+    """
     f_org = 0.0
     D_org = 0.18
     M_org = 30
@@ -59,14 +63,9 @@ class LiuSMM(SoilMoistureModel):
     
     
     def deformation_from_alt(self, alt):
-        # paper assumes exponential decay from 90% porosity to 45% porosity
-        # in general:
-        # P(z) = P_f + (Po - Pf)*e^(-kz)
-        # where P(f) = final porosity
-        #       P(o) = intial porosity
-        #       z is rate of exponential decay
-        # Without reading citation, let us assume k = 1
-        # Definite integral is now: https://www.wolframalpha.com/input?i=integrate+a+%2B+be%5E%28-kz%29+dz+from+0+to+x
+        # This is relatively slow and is why SCReSALT is much slower than ReSALT. It needs to make subsidence difference to
+        # thaw depth difference tables for each Q (basically per interferogram). This is relatively slow, so SCReSALT
+        # becomes slow. Precomputing/caching could significantly speed things up.
         integral, error = quad(liu_resalt_integrand, 0, alt)
         assert error < 1e-5
         return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * integral

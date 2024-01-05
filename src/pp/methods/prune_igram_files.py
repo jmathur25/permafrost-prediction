@@ -5,7 +5,7 @@ This is used to save space if interferograms are taking up too much space on you
 import shutil
 
 from igrams import SCHAEFER_INTEFEROGRAMS
-from data.consts import ISCE2_OUTPUTS_DIR
+from pp.data.consts import ISCE2_OUTPUTS_DIR
 
 useless = [
     "coregisteredSlc/highBand",

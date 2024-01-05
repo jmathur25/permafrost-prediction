@@ -12,7 +12,7 @@ from mintpy.cli import view, tsview, plot_network, plot_transection
 import h5py
 import sys
 sys.path.append("../../../../")
-from methods.utils import LatLon
+from pp.methods.utils import LatLon
 import matplotlib.pyplot as plt
 from osgeo import gdal
 
@@ -58,12 +58,12 @@ plt.tight_layout()
 plt.show()
 
 # %%
-ds = gdal.Open("/permafrost-prediction/src/py/data/alos_palsar/try_stack_stripmap/geom_reference/waterMask.rdr", gdal.GA_ReadOnly)
+ds = gdal.Open("/permafrost-prediction/src/pp/data/alos_palsar/try_stack_stripmap/geom_reference/waterMask.rdr", gdal.GA_ReadOnly)
 print(ds.RasterXSize, ds.RasterYSize)
 
 
 # %%
-ds = gdal.Open("/permafrost-prediction/src/py/methods/swbdLat_N70_N72_Lon_W158_W154.wbd", gdal.GA_ReadOnly)
+ds = gdal.Open("/permafrost-prediction/src/pp/methods/swbdLat_N70_N72_Lon_W158_W154.wbd", gdal.GA_ReadOnly)
 print(ds.RasterXSize, ds.RasterYSize)
 
 

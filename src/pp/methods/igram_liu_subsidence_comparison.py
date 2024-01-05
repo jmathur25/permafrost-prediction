@@ -18,10 +18,10 @@ import tqdm
 from scipy.stats import pearsonr
 
 sys.path.append("..")
-from data.utils import get_date_for_alos
-from data.consts import WORK_FOLDER, ISCE2_OUTPUTS_DIR
-from methods.igrams import SCHAEFER_INTEFEROGRAMS
-from methods.run_analysis import get_mintpy_deformation_timeseries, process_igram
+from pp.data.utils import get_date_for_alos
+from pp.data.consts import WORK_FOLDER, ISCE2_OUTPUTS_DIR
+from pp.methods.igrams import SCHAEFER_INTEFEROGRAMS
+from pp.methods.run_analysis import get_mintpy_deformation_timeseries, process_igram
 
 # %%
 df_liu_sub_gt = pd.read_csv(WORK_FOLDER / "Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
@@ -87,7 +87,7 @@ sub_expecteds = []
 sub_actuals = []
 if use_mintpy:
     print("Running with MintPy")
-    mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
+    mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/pp/methods/mintpy/barrow_2006_2010")
     stack_stripmap_output_dir = WORK_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
     dates, ground_def = get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_gt_sub_locs, use_geo)
     for i in range(1, len(dates)):

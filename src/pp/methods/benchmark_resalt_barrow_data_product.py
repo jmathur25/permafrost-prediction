@@ -22,10 +22,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-sys.path.append("/permafrost-prediction/src/py")
-from methods.soil_models import LiuSMM
-from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR, WORK_FOLDER
-from methods.utils import compute_stats, prepare_calm_data, prepare_temp
+sys.path.append("/permafrost-prediction/src/pp")
+from pp.methods.soil_models import LiuSMM
+from pp.data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR, WORK_FOLDER
+from pp.methods.utils import compute_stats, prepare_calm_data, prepare_temp
 
 
 # %%

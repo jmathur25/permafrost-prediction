@@ -10,8 +10,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 
-from methods.utils import prepare_temp
-from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
+from pp.methods.utils import prepare_temp
+from pp.data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 
 from scipy.stats import pearsonr
 

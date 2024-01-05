@@ -6,8 +6,8 @@ this checks that the interferograms match the expected dates and there are no du
 from datetime import datetime
 import sys
 
-from methods.igrams import SCHAEFER_INTEFEROGRAMS
-from data.utils import get_date_for_alos
+from pp.methods.igrams import SCHAEFER_INTEFEROGRAMS
+from pp.data.utils import get_date_for_alos
 
 
 all_dates = [

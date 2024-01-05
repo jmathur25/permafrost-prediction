@@ -14,9 +14,9 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 
-sys.path.append("/permafrost-prediction/src/py")
-from methods.resalt import generate_thaw_subsidence_differences
-from methods.soil_models import LiuSMM, liu_resalt_integrand, ConstantWaterSMM, SCReSALT_Invalid_SMM, ChenSMM
+sys.path.append("/permafrost-prediction/src/pp")
+from pp.methods.resalt import generate_thaw_subsidence_differences
+from pp.methods.soil_models import LiuSMM, liu_resalt_integrand, ConstantWaterSMM, SCReSALT_Invalid_SMM, ChenSMM
 
 # %%
 plt.rcParams.update({'font.size': 15})

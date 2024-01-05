@@ -7,8 +7,8 @@ import shutil
 from typing import Tuple
 import click
 import asf_search as asf
-from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
-from data.utils import prompt_user
+from pp.data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
+from pp.data.utils import prompt_user
 import re
 
 

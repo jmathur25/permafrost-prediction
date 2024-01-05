@@ -7,7 +7,7 @@ import pathlib
 import click
 import xml.etree.ElementTree as ET
 
-from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR, ISCE2_OUTPUTS_DIR
+from pp.data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR, ISCE2_OUTPUTS_DIR
 
 CURRENT_DIR = pathlib.Path(__file__).parent
 

@@ -12,7 +12,7 @@ from shapely.geometry import Polygon, Point
 
 import sys
 sys.path.append("..")
-from methods.igrams import SCHAEFER_INTEFEROGRAMS
+from pp.methods.igrams import SCHAEFER_INTEFEROGRAMS
 # %%
 # use https://search.asf.alaska.edu/
 wkt = 'POINT (-156.589301 71.31072)'

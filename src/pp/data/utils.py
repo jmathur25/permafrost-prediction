@@ -2,7 +2,7 @@ import datetime
 import os
 from typing import Tuple
 
-from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
+from pp.data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR
 
 
 def prompt_user(message) -> bool:

@@ -5,7 +5,7 @@ Not relevant to paper. Sets up files for MintPy analysis. Might be outdated.
 import os
 import pathlib
 
-from data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR, STACK_STRIPMAP_OUTPUTS_DIR
+from pp.data.consts import ALOS_L1_0_DIRNAME, ALOS_PALSAR_DATA_DIR, STACK_STRIPMAP_OUTPUTS_DIR
 
 files = [f for f in os.listdir(ALOS_PALSAR_DATA_DIR) if f.startswith("ALPSR")]
 OUTPUT_DIR = STACK_STRIPMAP_OUTPUTS_DIR / "barrow_2006_2010"

@@ -13,22 +13,22 @@ from osgeo import gdal
 import h5py
 import tqdm
 
-from methods.resalt import ReSALT, ReSALT_Type
-from methods.igrams import SCHAEFER_INTEFEROGRAMS
-from methods.utils import (
+from pp.methods.resalt import ReSALT, ReSALT_Type
+from pp.methods.igrams import SCHAEFER_INTEFEROGRAMS
+from pp.methods.utils import (
     LatLonFile,
     compute_stats,
     get_norm_ddt,
     prepare_calm_data,
     prepare_temp,
 )
-from data.consts import (
+from pp.data.consts import (
     CALM_PROCESSSED_DATA_DIR,
     ISCE2_OUTPUTS_DIR,
     TEMP_DATA_DIR,
 )
-from data.utils import get_date_for_alos
-from methods.soil_models import LiuSMM
+from pp.data.utils import get_date_for_alos
+from pp.methods.soil_models import LiuSMM
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -85,6 +85,7 @@ def run_analysis():
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     
+    # TODO: check this and delete
     # We need to report the calibration subsidence as if it happened during max thaw, not
     # when the measurement happened. To calculate the right calibration subsidence, we first need
     # to scale the calibration ALT to its average expected value across the years

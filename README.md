@@ -6,7 +6,15 @@ This contains code to reproduce the results in "A Modification to the Remotely S
 1. Make sure Docker is installed. Docker version 24.0.5 was used when this was developed. Also, a display was assumed in some parts of the container setup. If this is not the case for you, a few small changes might be needed.
 1. This code is tested on a desktop with Intel x86 architecture and running Ubuntu 22.04.3 LTS.
 
-## Starting from scratch
+## Seeing the algorithm work
+To understand the algorithm, look at `src/pp/tests/resalt.py`. You can run this test with:
+```
+cd src
+pytest pp/tests/resalt.py
+```
+This uses simulated data to show how SCReSALT outperforms ReSALT on soil models that don't have constant porosities.
+
+## Reproducing paper results
 First setup the dev environment. Follow the instructions in `dev_setup/README.md` for MintPy. All following instructions are meant to be run in Docker container.
 
 To make the soil model figures, run `src/py/methods/soil_models_figures.py`. This is meant to run in VSCode's Jupyter Notebook integration inside the Docker container.
@@ -56,13 +64,13 @@ Note: it is a good idea to use a debugger when running Python scripts. They easi
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug run_analysis.py",
+            "name": "Debug",
             "type": "python",
             "request": "launch",
-            "cwd": "${workspaceFolder}/src/py",
-            "module": "methods.run_analysis",
+            "cwd": "${workspaceFolder}/src",
+            "module": "pp.methods.run_analysis",
             "console": "integratedTerminal",
-        },
+        }
     ]
 }
 ```

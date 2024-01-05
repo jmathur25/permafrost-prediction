@@ -6,7 +6,7 @@ import click
 import numpy as np
 import pandas as pd
 
-from data.consts import TEMP_DATA_DIR
+from pp.data.consts import TEMP_DATA_DIR
 
 # Data is downloaded from this URL
 URL = "https://gml.noaa.gov/aftp/data/meteorology/in-situ/brw/met_brw_insitu_1_obop_hour_{}.txt"
