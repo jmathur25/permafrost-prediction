@@ -14,7 +14,7 @@ sys.path.append("/permafrost-prediction/src/py")
 from methods.resalt import ReSALT, ReSALT_Type
 from methods.soil_models import ChenSMM, LiuSMM
 from methods.utils import LatLonArray, compute_ddt_ddf, compute_stats, prepare_calm_data, prepare_temp
-from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
+from data.consts import CALM_PROCESSSED_DATA_DIR, WORK_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 
 # %%
 ds = nc.Dataset(

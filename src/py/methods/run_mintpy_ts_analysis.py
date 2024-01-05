@@ -14,9 +14,16 @@ import sys
 
 # TODO: fix module-ing
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import LatLonFile, compute_stats, get_norm_ddt, prepare_calm_data, prepare_temp
-from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, TEMP_DATA_DIR
+from methods.utils import (
+    LatLonFile,
+    compute_stats,
+    get_norm_ddt,
+    prepare_calm_data,
+    prepare_temp,
+)
+from data.consts import CALM_PROCESSSED_DATA_DIR, WORK_FOLDER, TEMP_DATA_DIR
 from methods.soil_models import LiuSMM
+
 
 @click.command()
 def mintpy_method():
@@ -28,7 +35,23 @@ def mintpy_method():
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
     paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
+    data_specified_ignore = [21, 43, 55] + [
+        8,
+        9,
+        20,
+        34,
+        45,
+        56,
+        67,
+        68,
+        78,
+        89,
+        90,
+        100,
+        101,
+        102,
+        111,
+    ]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     calib_point_id = 61
     start_year = 2006
@@ -44,8 +67,12 @@ def mintpy_method():
     ddt_scale = False
 
     df_temp = prepare_temp(temp_file, start_year, end_year)
-    df_peak_alt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
-    df_peak_alt = df_peak_alt.drop(['year', 'month', 'day', 'norm_ddt'], axis=1) # not needed anymore
+    df_peak_alt = prepare_calm_data(
+        calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp
+    )
+    df_peak_alt = df_peak_alt.drop(
+        ["year", "month", "day", "norm_ddt"], axis=1
+    )  # not needed anymore
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
@@ -57,9 +84,13 @@ def mintpy_method():
 
     # RHS and LHS per-pixel of eq. 2
     print("Running with MintPy solution")
-    mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010")
-    stack_stripmap_output_dir = DATA_PARENT_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
-    lhs_all, rhs_all = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo)
+    mintpy_output_dir = pathlib.Path(
+        "/permafrost-prediction/src/py/methods/mintpy/barrow_2006_2010"
+    )
+    stack_stripmap_output_dir = WORK_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
+    lhs_all, rhs_all = process_mintpy_timeseries(
+        stack_stripmap_output_dir, mintpy_output_dir, df_alt_gt, df_temp, use_geo
+    )
 
     print("Solving equations")
     # rhs_all = rhs_all[:, ]
@@ -87,7 +118,7 @@ def mintpy_method():
         alt_pred.append(alt)
 
     alt_pred = np.array(alt_pred)
-    
+
     alt_gt = df_alt_gt["alt_m"].values
     compute_stats(alt_pred, alt_gt)
 
@@ -97,8 +128,12 @@ def mintpy_method():
     # np.save("alt_gt", alt_gt)
 
 
-def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo):
-    dates, ground_def = get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo)
+def process_mintpy_timeseries(
+    stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, df_temp, use_geo
+):
+    dates, ground_def = get_mintpy_deformation_timeseries(
+        stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo
+    )
     lhs = []
     rhs = []
     for i in range(len(dates)):
@@ -119,12 +154,16 @@ def process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_
     return lhs, rhs
 
 
-def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo):
+def get_mintpy_deformation_timeseries(
+    stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo
+):
     # Two sets of lat/lon, one from geom_reference (which references from radar image),
     # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
     # reading of the interferogram from the geocoded output, which now presents the data
     # in Earth lat/lon coordinates.
-    lat_lon_inc = LatLonFile.RDR.create_lat_lon(stack_stripmap_output_dir / "geom_reference")
+    lat_lon_inc = LatLonFile.RDR.create_lat_lon(
+        stack_stripmap_output_dir / "geom_reference"
+    )
     if use_geo:
         lat_lon_intfg = LatLonFile.H5.create_lat_lon(mintpy_outputs_dir / "geo")
     else:
@@ -134,7 +173,7 @@ def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_
     ds = gdal.Open(str(stack_stripmap_output_dir / "geom_reference/incLocal.rdr"))
     inc = ds.GetRasterBand(2).ReadAsArray()
     del ds
-    
+
     if use_geo:
         f = h5py.File(mintpy_outputs_dir / "geo/geo_timeseries_tropHgt_demErr.h5", "r")
         los_def = f["timeseries"][()]
@@ -143,9 +182,8 @@ def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_
         f = h5py.File(mintpy_outputs_dir / "timeseries_tropHgt_demErr.h5", "r")
         los_def = f["timeseries"][()]
         dates = f["date"][()]
-        
-    dates = [datetime.datetime.strptime(d.decode("utf-8"), "%Y%m%d")
-            for d in dates]
+
+    dates = [datetime.datetime.strptime(d.decode("utf-8"), "%Y%m%d") for d in dates]
 
     point_to_pixel_inc = []
     point_to_pixel_intfg = []
@@ -162,11 +200,13 @@ def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_
     point_to_pixel_intfg = np.array(point_to_pixel_intfg)
 
     ground_def = []
-    for (py_inc, px_inc), (py_intfg, px_intfg) in zip(point_to_pixel_inc[:,[1,2]], point_to_pixel_intfg[:,[1,2]]):
+    for (py_inc, px_inc), (py_intfg, px_intfg) in zip(
+        point_to_pixel_inc[:, [1, 2]], point_to_pixel_intfg[:, [1, 2]]
+    ):
         incidence_angle = inc[py_inc, px_inc] * np.pi / 180
         ground_def.append(los_def[:, py_intfg, px_intfg] / np.cos(incidence_angle))
     ground_def = np.stack(ground_def).transpose(1, 0)
-    
+
     return dates, ground_def
 
 
@@ -182,11 +222,21 @@ def plot_change(img, bbox, point_to_pixel, label):
         point_id, y, x = point
         y -= bbox[0][0]
         x -= bbox[0][1]
-        plt.gca().add_patch(plt.Rectangle((x - 1.5, y - 1.5), 3, 3, fill=None, edgecolor="red", linewidth=2))
+        plt.gca().add_patch(
+            plt.Rectangle(
+                (x - 1.5, y - 1.5), 3, 3, fill=None, edgecolor="red", linewidth=2
+            )
+        )
 
         # Annotate each box with the point #
         plt.annotate(
-            f"#{point_id}", (x, y), textcoords="offset points", xytext=(0, 5), ha="center", fontsize=5, color="white"
+            f"#{point_id}",
+            (x, y),
+            textcoords="offset points",
+            xytext=(0, 5),
+            ha="center",
+            fontsize=5,
+            color="white",
         )
 
     plt.colorbar()

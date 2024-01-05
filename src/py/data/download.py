@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import code
 
-from data.consts import DATA_PARENT_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
+from data.consts import WORK_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
 from data.sar import alos_palsar_granule
 from data.utils import prompt_user
 
@@ -53,7 +53,9 @@ class CALMDownloadSite(enum.Enum):
         def download_file(url: str, savepath: pathlib.Path):
             savepath.parent.mkdir(parents=True, exist_ok=True)
             if savepath.exists():
-                if not prompt_user(f"Data already downloaded at {savepath}. Redownload?"):
+                if not prompt_user(
+                    f"Data already downloaded at {savepath}. Redownload?"
+                ):
                     return
             resp = requests.get(url)
             if resp.status_code == 200:
@@ -66,13 +68,16 @@ class CALMDownloadSite(enum.Enum):
 
         if self == CALMDownloadSite.BARROW:
             url = urljoin(
-                DATA_PARENT_FOLDER, "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls"
+                WORK_FOLDER,
+                "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls",
             )
             savepath = CALM_RAW_DATA_DIR / "U1_alt_1995_2022.xls"
             download_file(url, savepath)
             # We may need to use other sheets in the future
             df = pd.read_excel(savepath, sheet_name="data")
-            df = df[:121]  # 121 nodes. Ignore the last few points cause they are averages. We don't need them.
+            df = df[
+                :121
+            ]  # 121 nodes. Ignore the last few points cause they are averages. We don't need them.
             df = df.rename(
                 {
                     "GridNode": StandardDataFormatColumns.POINT_ID.value,
@@ -102,10 +107,14 @@ class CALMDownloadSite(enum.Enum):
                 df_date = df[used_cols + [date_col]].copy()
                 # Create a new column specifying the date
                 df_date[StandardDataFormatColumns.DATE.value] = parse_date(date_col)
-                df_date = df_date.rename({date_col: StandardDataFormatColumns.ALT_METERS.value}, axis=1)
+                df_date = df_date.rename(
+                    {date_col: StandardDataFormatColumns.ALT_METERS.value}, axis=1
+                )
                 date_dfs.append(df_date)
 
-            df_all = pd.concat(date_dfs, axis=0, ignore_index=True, verify_integrity=True)
+            df_all = pd.concat(
+                date_dfs, axis=0, ignore_index=True, verify_integrity=True
+            )
             StandardDataFormatColumns.save_standardized_dataframe(df_all, "u1")
 
             print("TODO: Download U2 data")
