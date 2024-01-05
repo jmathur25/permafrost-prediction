@@ -10,12 +10,13 @@ import enum
 import pathlib
 from typing import Optional
 import click
+import numpy as np
 import tqdm
 from urllib.parse import urljoin
 import pandas as pd
 import requests
 
-from data.consts import WORK_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
+from data.consts import CALM_DOWNLOAD_URL, WORK_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
 from data.sar import alos_palsar_granule
 from data.utils import prompt_user
 from data.download_temp import barrow_temperature
@@ -75,7 +76,7 @@ class CALMDownloadSite(enum.Enum):
 
         if self == CALMDownloadSite.BARROW:
             url = urljoin(
-                WORK_FOLDER,
+                CALM_DOWNLOAD_URL,
                 "North%20America/Alaska/North%20Slope/u01_barrow_grid/U1_alt_1995_2022.xls",
             )
             savepath = CALM_RAW_DATA_DIR / "U1_alt_1995_2022.xls"
@@ -122,11 +123,20 @@ class CALMDownloadSite(enum.Enum):
             df_all = pd.concat(
                 date_dfs, axis=0, ignore_index=True, verify_integrity=True
             )
+            # Convert from cm to meters and handle 'w', which is replaced with np.nan
+            df_all[StandardDataFormatColumns.ALT_METERS.value] = df_all[StandardDataFormatColumns.ALT_METERS.value].apply(try_float) / 100
             StandardDataFormatColumns.save_standardized_dataframe(df_all, "u1")
 
             print("TODO: Download U2 data")
         else:
             raise ValueError(f"Could not match {self}?")
+        
+
+def try_float(x):
+    try:
+        return float(x)
+    except:
+        return np.nan
 
 
 @click.command()
@@ -138,7 +148,7 @@ class CALMDownloadSite(enum.Enum):
 def calm(site: Optional[str]):
     sites = None
     if site is not None:
-        sites = [site]
+        sites = [CALMDownloadSite(site)]
     else:
         print("Downloading data for all CALM sites...")
         sites = [site for site in CALMDownloadSite]

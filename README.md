@@ -1,8 +1,13 @@
 # permafrost-prediction
+This contains code to reproduce the results in "A Modification to the Remotely Sensed Active Layer Thickness ReSALT Algorithm to have Self-Consistency".
 
-You will need an EarthData login to download ALOS PALSAR images. Get one from https://urs.earthdata.nasa.gov/.
+## Prerequisities
+1. You will need an EarthData login to download ALOS PALSAR images. Get one from https://urs.earthdata.nasa.gov/.
+1. Make sure Docker is installed. Docker version 24.0.5 was used when this was developed. Also, a display was assumed in some parts of the container setup. If this is not the case for you, a few small changes might be needed.
+1. This code is tested on a desktop with Intel x86 architecture and running Ubuntu 22.04.3 LTS.
 
-To get started, first setup the dev environment. Follow the instructions in `dev_setup/README.md` for MintPy. All following instructions are meant to be run in Docker container.
+## Starting from scratch
+First setup the dev environment. Follow the instructions in `dev_setup/README.md` for MintPy. All following instructions are meant to be run in Docker container.
 
 To make the soil model figures, run `src/py/methods/soil_models_figures.py`. This is meant to run in VSCode's Jupyter Notebook integration inside the Docker container.
 
@@ -62,7 +67,10 @@ Note: it is a good idea to use a debugger when running Python scripts. They easi
 }
 ```
 
+## Quickstart
+TODO: download Docker container, download igrams and other data?
 
+## Other
 TODO: better integrate this
 
 To cleanup unused imports:

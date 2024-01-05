@@ -264,14 +264,6 @@ def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     # pandas version 2.1.1 has a bug where <= is not-inclusive. So we do: < pd.to_datetime(str(end_year + 1)
     df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] < pd.to_datetime(str(end_year + 1)))]
 
-    def try_float(x):
-        try:
-            return float(x)
-        except:
-            return np.nan
-
-    # TODO: fix in processor. handle 'w'?
-    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
     # only grab ALTs from end of summer, which will be the last
     # measurement in a year
     df_calm["year"] = df_calm["date"].dt.year
@@ -292,7 +284,7 @@ def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, df_temp
 def prepare_temp(temp_file, start_year, end_year):
     df_temp = pd.read_csv(temp_file)
     assert len(pd.unique(df_temp["site_code"])) == 1  # TODO: support codes
-    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] <= end_year)]
+    df_temp = df_temp[(df_temp["year"] >= start_year) & (df_temp["year"] < end_year + 1)]
     df_temp = df_temp.sort_values(["year", "month", "day"]).set_index(["year", "month", "day"])
     df_temps = []
     for year, df_t in df_temp.groupby("year"):

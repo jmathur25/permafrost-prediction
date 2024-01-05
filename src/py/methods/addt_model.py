@@ -1,10 +1,18 @@
+"""
+Not relevant to paper. This is a simple baseline that takes 20% of the data on ADDT
+and ALT and fits a line to it. While SAR is more 'hands-off' in that is only requires
+a way to calibrate subsidence in the image and otherwise does not require any in-situ
+data to fit against, this baseline is a good comparison. It might be more useful
+in the future with a multiyear analysis (as ADDT is currently fixed per year for any site).
+"""
+
 import sys
 import click
 import numpy as np
 import pandas as pd
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import compute_stats, prepare_temp
+from methods.utils import compute_stats, prepare_calm_data, prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 
 import matplotlib.pyplot as plt
@@ -23,17 +31,13 @@ def addt_method():
     paper_specified_ignore = [7, 110, 121]
     data_specified_ignore = [21, 43, 55]
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
-    start_year = 1995 #2006
-    end_year = 2010
+    start_year = 1995
+    end_year = 2013
 
-    norm_per_year = False
-    ddt_scale = False
-    
-    df_temp = prepare_temp(temp_file, start_year, end_year, norm_per_year)
-    # df_calm = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
-    
-    # df_calm["root_ddt"] = np.sqrt(df_calm['ddt'].values)
-    # df_calm = df_calm.groupby('year').mean()
+    df_temp = prepare_temp(temp_file, start_year, end_year)
+    df_peak_alt = prepare_calm_data(
+        calm_file, ignore_point_ids, start_year, end_year, df_temp
+    )
     
     def print_stats(x, y, x_desc):
         pearson_r, _ = pearsonr(x, y)
@@ -45,50 +49,20 @@ def addt_method():
         plt.savefig(f"addt_corr_{x_desc}.png")
         plt.close()
         
-    # print_stats(df_calm['ddt'].values, df_calm['alt_m'].values, "ddt")
-    # print_stats(df_calm['root_ddt'].values, df_calm['alt_m'].values, "root_ddt")
-    # print()
+    x = df_peak_alt['sqrt_norm_ddt'].values
+    y = df_peak_alt['alt_m'].values
     
-    df_calm = pd.read_csv(calm_file, parse_dates=["date"])
-    df_calm = df_calm.sort_values("date", ascending=True)
-    df_calm = df_calm[df_calm["point_id"].apply(lambda x: x not in ignore_point_ids)]
-    # TODO: can we just do 2006-2010? Before 1995-2013
-    df_calm = df_calm[(df_calm["date"] >= pd.to_datetime(str(start_year))) & (df_calm["date"] <= pd.to_datetime(str(end_year)))]
-
-    def try_float(x):
-        try:
-            return float(x)
-        except:
-            return np.nan
-
-    # TODO: fix in processor. handle 'w'?
-    df_calm["alt_m"] = df_calm["alt_m"].apply(try_float) / 100
-    # only grab ALTs from end of summer, which willl be the last
-    # measurement in a year
-    df_calm["year"] = df_calm["date"].dt.year
-    df_calm["month"] = df_calm["date"].dt.month
-    df_peak_alt = df_calm.groupby(["point_id", "year", "month"]).last().reset_index()
-    df_peak_alt['day'] = df_peak_alt['date'].dt.day
-    df_peak_alt = pd.merge(df_peak_alt, df_temp[['ddt', 'norm_ddt']], on=['year', 'month', 'day'], how='left')
-    df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
-    df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
-    df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
-    df_calm = df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
+    is_nan = np.isnan(x) | np.isnan(y)
+    print("NANS", np.mean(is_nan))
+    not_nan = ~is_nan
+    x = x[not_nan]
+    y = y[not_nan]
     
-    df_calm["root_ddt"] = np.sqrt(df_calm['ddt'].values)
-    # df_calm = df_calm.groupby(['year', 'month']).mean()
-    df_calm = df_calm[df_calm['month'] == 8]
-    df_calm = df_calm.dropna(subset='alt_m')
+    print_stats(x, y, "sqrt_norm_ddt")
     
-    print_stats(df_calm['ddt'].values, df_calm['alt_m'].values, "ddt")
-    print_stats(df_calm['root_ddt'].values, df_calm['alt_m'].values, "root_ddt")
-    print()
-    
-    x = df_calm['root_ddt'].values
-    y = df_calm['alt_m'].values
     frac_fit = 0.2
     selected_indices = np.random.choice(x.size, size=int(frac_fit * x.size), replace=False)
-    mask = np.zeros_like(df_calm['ddt'].values, dtype=bool)
+    mask = np.zeros_like(x, dtype=bool)
     mask[selected_indices] = True
     
     x_train = x[mask]

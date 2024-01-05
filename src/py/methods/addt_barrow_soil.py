@@ -1,3 +1,8 @@
+"""
+Not relevant to the main paper. Looks at ADDT in Barrow and correlates it with ALT. Might need
+some adjusting to work and instructions are likely not complete.
+"""
+
 from datetime import datetime
 import sys
 import click
@@ -34,7 +39,7 @@ def addt_method():
     ]
     for i in range(6, 11):
         istr = str(i).zfill(2)
-        df = pd.read_excel(f"/permafrost-prediction-shared-data/Barrow1_{istr}ave.xls")
+        df = pd.read_excel(f"/work/Barrow1_{istr}ave.xls")
         col_renames = dict()
         for i, ed in zip(range(2, len(expected_depths_cm) + 2), expected_depths_cm):
             col = f'MRC.{i}'
