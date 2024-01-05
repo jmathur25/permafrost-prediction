@@ -13,8 +13,9 @@ from matplotlib.lines import Line2D
 
 import numpy as np
 
+
 sys.path.append("/permafrost-prediction/src/py")
-from methods.simulate_sub_diff_solve import generate_h1_h2_subs
+from methods.resalt import generate_thaw_subsidence_differences
 from methods.soil_models import LiuSMM, liu_resalt_integrand, ConstantWaterSMM, SCReSALT_Invalid_SMM, ChenSMM
 
 # %%
@@ -32,7 +33,7 @@ def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None):
     sqrt_ddt_ref = 15
     sqrt_ddt_sec = sqrt_ddt_ref/sqrt_ddt_ratio
     upper_alt_limit = zs[-1]/sqrt_ddt_ratio
-    h1s, h2s, subsidences = generate_h1_h2_subs(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_alt_limit, N=100)
+    h1s, h2s, subsidences = generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_alt_limit, N=100)
     ax.plot(h2s - h1s, subsidences, color=color)
     ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $Q = {sqrt_ddt_ratio}$")
     ax.set_xlabel(r"$h_{t_i} - h_{t_j} \, (m)$")  # Thin space

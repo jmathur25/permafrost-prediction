@@ -1,4 +1,6 @@
-
+"""
+Simulates thaw and temperature data and compares SCReSALT to ReSALT.
+"""
 
 import datetime
 import sys
@@ -8,12 +10,10 @@ from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
 
 
-sys.path.append("/permafrost-prediction/src/py")
 from methods.resalt import ReSALT, ReSALT_Type
 from methods.soil_models import ConstantWaterSMM, LiuSMM, SoilMoistureModel
 
 
-# TODO: DDT errors account for a lot of error. Handle it?
 def make_simulated_data(n_igrams: int, n_pixels: int, smm: SoilMoistureModel):
     rand = np.random.RandomState(7)
     
@@ -121,15 +121,14 @@ def test_liu_smm(rtype: ReSALT_Type, plot=False):
     resalt = ReSALT(df_temp, smm, calib_idx, calib_deformation, rtype)
     alt_pred = resalt.run_inversion(deformations, dates)
     
-    # Ignore calibration point for errors
+    # Ignore calibration point
     alt_pred = alt_pred[1:]
     alt_gt = alt_gt[1:]
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
-    print(f"Resalt {rtype} RMSE under Liu model:", round(rmse, 4))
+    print(f"Resalt {rtype} RMSE under Liu soil model:", round(rmse, 4))
     
     
     
 if __name__ == '__main__':
-    # test_constant_smm(ReSALT_Type.JATIN)
-    test_liu_smm(ReSALT_Type.SCReSALT)
-    
+    # test_liu_smm(ReSALT_Type.SCReSALT)
+    test_liu_smm(ReSALT_Type.LIU_SCHAEFER)

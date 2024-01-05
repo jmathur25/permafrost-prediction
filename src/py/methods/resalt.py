@@ -5,11 +5,13 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import tqdm
 
 from methods.soil_models import SoilMoistureModel
-from methods.simulate_sub_diff_solve import find_best_alt_diff
 from methods.utils import get_norm_ddt
-
+from scipy.stats import pearsonr
+from scipy.optimize import root_scalar
+from scipy.optimize import minimize_scalar
 
 class ReSALT_Type(enum.Enum):
     LIU_SCHAEFER = 0
@@ -39,7 +41,7 @@ class ReSALT:
         n = deformations.shape[0]
         lhs_all = np.zeros((n, deformations.shape[1]))
         rhs_all = np.zeros((n, 2))
-        for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
+        for i, (deformation_per_pixel, (date_ref, date_sec)) in tqdm.tqdm(enumerate(zip(deformations, dates)), total=len(deformations), desc="Processing each interferogram"):
             delta_t_years = (date_ref - date_sec).days / 365
             norm_ddt_ref = get_norm_ddt(self.df_temp, date_ref)
             norm_ddt_sec = get_norm_ddt(self.df_temp, date_sec)
@@ -67,7 +69,7 @@ class ReSALT:
                     calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
                     deformation_per_pixel = deformation_per_pixel + calib_node_delta
                 
-                lhs = find_best_alt_diff(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
+                lhs = find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
             else:
                 raise ValueError("Unknown rtype:", self.rtype)
                 
@@ -76,14 +78,16 @@ class ReSALT:
             rhs_all[i,:] = rhs
         
         print("Solving equations")
+        # SCReSALT mode cannot solve for R in current implementation
         if only_solve_E or self.rtype == ReSALT_Type.SCReSALT:
-            # Jatin mode cannot solve for R
             rhs_all = rhs_all[:, [1]]
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
         
         assert np.isnan(sol).sum() == 0
         if self.rtype == ReSALT_Type.SCReSALT:
+            # TODO: below can help correct for any NANs. It is currently not encountered,
+            # so this is left commented out.
             # alt_pred = sol[0, :]
             # # TOOD: explain
             # nans = np.argwhere(np.isnan(alt_pred))
@@ -105,7 +109,7 @@ class ReSALT:
         elif self.rtype == ReSALT_Type.LIU_SCHAEFER:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
-            if self.calib_idx:
+            if self.calib_idx is not None:
                 delta_E = self.calib_deformation - E[self.calib_idx]
                 E = E + delta_E
             alt_pred = []
@@ -120,5 +124,36 @@ class ReSALT:
             raise ValueError()
         return alt_pred
 
-        
+
+def find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit=1.0):
+    """
+    Implements Algorithm 1 in the paper.
+    """
+    thaw_depth_differences, subsidence_differences = generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_thaw_depth_limit)
+    sorter = np.argsort(subsidence_differences)
+    best_matching_thaw_depth_differences = []
+    for d in deformation_per_pixel:
+        idx = np.searchsorted(subsidence_differences, d, sorter=sorter)
+        if idx == len(subsidence_differences):
+            idx = len(subsidence_differences) - 1
+        best_matching_thaw_depth_differences.append(thaw_depth_differences[idx])
+    return best_matching_thaw_depth_differences    
     
+    
+def generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit: float, N=1000):
+    Q = sqrt_ddt_ref/sqrt_ddt_sec
+    # assert sqrt_ddt_ratio != 1.0 # or something close...
+    if Q > 1.0:
+        # Under this condition, h1 < h2 so to make h2 upper bounded by `upper_thaw_depth_limit`,
+        # we need h1 upper bounded by `upper_thaw_depth_limit/Q`
+        # Under the opposite condition, h1 > h2 so `upper_thaw_depth_limit` is correct as it is.
+        upper_thaw_depth_limit = upper_thaw_depth_limit/Q
+    h1s = np.linspace(0.01, upper_thaw_depth_limit, num=N)
+    h2s = Q * h1s
+    subsidence_differences = []
+    for h2, h1 in zip(h2s, h1s):
+        sub = smm.deformation_from_alt(h2) - smm.deformation_from_alt(h1)
+        subsidence_differences.append(sub)
+    subsidence_differences = np.array(subsidence_differences)
+    return h2s - h1s, subsidence_differences
+

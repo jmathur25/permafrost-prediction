@@ -28,7 +28,6 @@ from methods.utils import (
     prepare_calm_data,
     prepare_temp,
 )
-from methods.gt_phase_unwrap import solve_best_phase_unwrap
 from data.consts import (
     CALM_PROCESSSED_DATA_DIR,
     WORK_FOLDER,
@@ -167,11 +166,6 @@ def run_analysis():
     plt.xlabel("ALT Ground-Truth")
     plt.ylabel("ALT Prediction")
 
-    # df_alt_gt.to_csv("df_alt_gt.csv", index=True)
-    # np.save("subsidence", E)
-    # np.save("alt_preds", alt_pred)
-    # np.save("alt_gt", alt_gt)
-
 
 def worker(i, scene_pair, df_alt_gt, use_geo):
     scene1, scene2 = scene_pair
@@ -181,7 +175,6 @@ def worker(i, scene_pair, df_alt_gt, use_geo):
     return i, deformation, date_pair
 
 
-# TODO: fix naming
 def process_scene_pair(alos1, alos2, df_calm_points, use_geo, needs_sign_flip):
     n_horiz = 1
     n_vert = 1
@@ -436,14 +429,6 @@ def compute_deformation(
     los_def = igram_unw_delta_phase_slice / (4 * np.pi) * wavelength
     ground_def = los_def / np.cos(incidence_angle)
     return ground_def
-
-
-def ideal_deformation_to_phase(
-    ideal_deformation: np.array, incidence_angle: float, wavelength: float
-) -> np.ndarray:
-    ideal_los_def = ideal_deformation * np.cos(incidence_angle)
-    ideal_igram_unw_phase = ideal_los_def / wavelength * (4 * np.pi)
-    return ideal_igram_unw_phase
 
 
 if __name__ == "__main__":
