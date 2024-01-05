@@ -77,4 +77,4 @@ def download_year(year):
 
 if __name__ == '__main__':
     # download_barrow_temp_for_year()
-    _download_barrow_temp_for_year(1995, 2010)
+    _download_barrow_temp_for_year(1995, 2022)

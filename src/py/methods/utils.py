@@ -3,6 +3,7 @@ from enum import Enum
 import pathlib
 from haversine import haversine, Unit
 from isce.components import isceobj
+from matplotlib import pyplot as plt
 import numpy as np
 from osgeo import gdal
 import pandas as pd
@@ -103,6 +104,46 @@ class LatLonXML(LatLon):
         assert x >= 0
         return y, x
     
+# TODO: merge with XML?
+class LatLonFunc(LatLon):
+    def __init__(self, top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon, lat_spacing, lon_spacing, chunk_size=None):
+        # Lat decreases as y increases for images
+        assert lat_spacing < 0
+        # Lon increases as x increases
+        assert lon_spacing > 0
+        self.top_left_lat = top_left_lat
+        self.top_left_lon = top_left_lon
+        self.bottom_right_lat = bottom_right_lat
+        self.bottom_right_lon = bottom_right_lon
+        self.lat_spacing = lat_spacing
+        self.lon_spacing = lon_spacing
+        self.chunk_size = chunk_size
+        
+        vert_res = (
+            haversine((self.top_left_lat, self.top_left_lon), (self.top_left_lat + 1000 * self.lat_spacing, self.top_left_lon)) / 1000
+        ) * 1000
+        horiz_res = (
+            haversine((self.top_left_lat, self.top_left_lon), (self.top_left_lat, 1000 * self.lon_spacing + self.top_left_lon)) / 1000
+        ) * 1000
+        if self.chunk_size is not None:
+            vert_res = vert_res * self.chunk_size[0]
+            horiz_res = horiz_res * self.chunk_size[1]
+        print("VERT RES (m):", vert_res)
+        print("HORIZ RES (m):", horiz_res)
+    
+    
+    def find_closest_pixel(self, lat, lon):
+        assert self.bottom_right_lat <= lat <= self.top_left_lat 
+        assert self.top_left_lon <= lon <= self.bottom_right_lon 
+        y = int((lat - self.top_left_lat) / self.lat_spacing)
+        x = int((lon - self.top_left_lon) / self.lon_spacing)
+        if self.chunk_size is not None:
+            y = y // self.chunk_size[0]
+            x = x // self.chunk_size[1]
+        assert y >= 0
+        assert x >= 0
+        return y, x
+    
 
 
 class LatLonArray(LatLon):
@@ -144,20 +185,21 @@ class LatLonArray(LatLon):
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
         # TODO: implement proper distance checking
         dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
-        assert dist < max_dist_meters
+        assert dist < max_dist_meters, f"Closest point is {dist} away, which exceeds the max dist"
         return closest_pixel_idx
-
-
-def compute_stats(alt_pred, alt_gt):
+    
+    
+def compute_stats(alt_pred, alt_gt, plot=None):
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
     print(f"number of nans GT: {nan_mask_2.sum()}/{len(alt_pred)}")
-    not_nan_mask = ~(nan_mask_1 | nan_mask_2)
+    is_nan = (nan_mask_1 | nan_mask_2)
+    not_nan_mask = ~is_nan
+    print("NAN LOCS:", np.argwhere(is_nan))
     alt_pred = alt_pred[not_nan_mask]
     alt_gt = alt_gt[not_nan_mask]
     diff = alt_pred - alt_gt
-    print("ABS DIFF MEAN", np.mean(np.abs(diff)))
     e = 0.079
     # computing proper uncertainty involves propogating model parameter error down
     # (see https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2011JF002041)
@@ -167,11 +209,12 @@ def compute_stats(alt_pred, alt_gt):
     mask_is_great = chi_stat < 1
     alt_within_uncertainty_mask = (alt_pred - resalt_e < alt_gt) & (alt_gt < alt_pred + resalt_e)
     alt_within_uncertainty_mask &= ~mask_is_great  # exclude ones that are great
-    print("FOR ENTIRE INPUT (excluding nans):")
-    _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask)
+    
+    print("METRICS (excluding nans):")
+    _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask, plot)
 
 
-def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask):
+def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_uncertainty_mask, plot):
     print("avg, std ALT pred", np.mean(alt_pred), np.std(alt_pred))
     print("avg, std ALT GT", np.mean(alt_gt), np.std(alt_gt))
 
@@ -193,9 +236,21 @@ def _print_stats(alt_pred, alt_gt, diff, chi_stat, mask_is_great, alt_within_unc
 
     pearson_corr, _ = pearsonr(alt_pred, alt_gt)
     print(f"Pearson R: {pearson_corr}")
+    
+    mae = np.mean(np.abs(diff))
+    print("MAE:", mae)
 
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     print(f"RMSE: {rmse}")
+    
+    if plot:
+        plot_title, plot_savepath = plot
+        plt.scatter(alt_gt, alt_pred)
+        plt.xlabel("ALT Ground-Truth (m)")
+        plt.ylabel("ALT Prediction (m)")
+        plt.title(plot_title)
+        # plt.text(0.05, 0.95, f'Pearson R: {pearson_corr:.4f}', transform=plt.gca().transAxes)
+        plt.savefig(plot_savepath)
     
 def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     df_calm = pd.read_csv(calm_file, parse_dates=["date"])
@@ -273,3 +328,18 @@ def compute_ddt_ddf(df):
 
     df["ddf"] = ddf_list
     df["ddt"] = ddt_list
+
+def compute_bounding_box(pixels, n=10):
+    # Initialize min and max coordinates for y and x
+    min_y = np.min(pixels[:, 0])
+    min_x = np.min(pixels[:, 1])
+    max_y = np.max(pixels[:, 0])
+    max_x = np.max(pixels[:, 1])
+
+    # Add pixel margin to each side
+    min_y = max(min_y - n, 0)
+    min_x = max(min_x - n, 0)
+    max_y += n
+    max_x += n
+
+    return ((min_y, min_x), (max_y, max_x))

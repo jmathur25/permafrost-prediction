@@ -8,7 +8,7 @@ import pandas as pd
 
 from methods.soil_models import SoilMoistureModel
 from methods.simulate_sub_diff_solve import find_best_alt_diff
-from methods.run_analysis import get_norm_ddt
+from methods.utils import get_norm_ddt
 
 
 class ReSALT_Type(enum.Enum):
@@ -24,7 +24,7 @@ class ReSALT:
         self.df_temp = df_temp
         self.calib_idx = calib_idx
         self.calib_deformation = calib_deformation
-        self.calib_alt = smm.alt_from_deformation(self.calib_deformation)
+        self.calib_alt = smm.alt_from_deformation(self.calib_deformation) if self.calib_deformation else None
         self.smm = smm
         self.rtype = rtype
      
@@ -50,24 +50,26 @@ class ReSALT:
             
             if self.rtype == ReSALT_Type.LIU_SCHAEFER:
                 # Solve as deltas over calibration deformation
-                delta = deformation_per_pixel[self.calib_idx]
-                lhs = deformation_per_pixel - delta
+                if self.calib_idx is not None:
+                    delta = deformation_per_pixel[self.calib_idx]
+                    lhs = deformation_per_pixel - delta
+                else:
+                    lhs = deformation_per_pixel
             elif self.rtype == ReSALT_Type.JATIN:
-                # TODO: easily scales to calib being a non-thaw point like gravel, as all we ultimately do
-                # is calculate subsidence within an image?
-                expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
-                expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
-                expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
-                expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
-                expected_calib_def = expected_deformation_ref - expected_deformation_sec
-                
-                # Scale the deformations to align with the expected calibration deformation
-                calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
-                deformation_per_pixel = deformation_per_pixel + calib_node_delta
+                if self.calib_alt:
+                    expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
+                    expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
+                    expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
+                    expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
+                    expected_calib_def = expected_deformation_ref - expected_deformation_sec
+                    
+                    # Scale the deformations to align with the expected calibration deformation
+                    calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
+                    deformation_per_pixel = deformation_per_pixel + calib_node_delta
                 
                 lhs = find_best_alt_diff(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
             else:
-                raise ValueError()
+                raise ValueError("Unknown rtype:", self.rtype)
                 
                 
             lhs_all[i,:] = lhs
@@ -80,28 +82,32 @@ class ReSALT:
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
         
-        # if self.rtype == ReSALT_Type.JATIN:
-        #     # Jatin mode can induce nans
-        #     nans = np.argwhere(np.isnan(alt_pred))
-        #     if len(nans) > 0:
-        #         resolved = 0
-        #         for i in nans[:,0]:
-        #             lhs_i = lhs_all[:,i]
-        #             nan_mask = np.isnan(lhs_i)
-        #             if np.mean(nan_mask) > 0.5:
-        #                 continue
-        #             not_nan_mask = ~nan_mask
-        #             alt_i = np.linalg.pinv(rhs_all[not_nan_mask]) @ lhs_i[not_nan_mask]
-        #             alt_pred[i] = alt_i
-        #             resolved += 1
-        #         print("Number of pixels with nans in least-squares inversion:", len(nans))
         assert np.isnan(sol).sum() == 0
-
-        if self.rtype == ReSALT_Type.LIU_SCHAEFER:
+        if self.rtype == ReSALT_Type.JATIN:
+            # alt_pred = sol[0, :]
+            # # TOOD: explain
+            # nans = np.argwhere(np.isnan(alt_pred))
+            # if len(nans) > 0:
+            #     resolved = 0
+            #     for i in nans[:,0]:
+            #         lhs_i = lhs_all[:,i]
+            #         nan_mask = np.isnan(lhs_i)
+            #         if np.mean(nan_mask) > 0.8:
+            #             # Too many nans so bail.
+            #             continue
+            #         not_nan_mask = ~nan_mask
+            #         alt_i = np.linalg.pinv(rhs_all[not_nan_mask]) @ lhs_i[not_nan_mask]
+            #         assert alt_i.shape == (1,)
+            #         alt_pred[i] = alt_i[0]
+            #         resolved += 1
+            #     print(f"Resolved {resolved}/{len(nans)} pixels with nans in least-squares inversion")
+            alt_pred = sol[0, :]
+        elif self.rtype == ReSALT_Type.LIU_SCHAEFER:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
-            delta_E = self.calib_deformation - E[self.calib_idx]
-            E = E + delta_E
+            if self.calib_idx:
+                delta_E = self.calib_deformation - E[self.calib_idx]
+                E = E + delta_E
             alt_pred = []
             for e in E:
                 if e < 1e-3:
@@ -109,10 +115,7 @@ class ReSALT:
                     continue
                 alt = self.smm.alt_from_deformation(e)
                 alt_pred.append(alt)
-
             alt_pred = np.array(alt_pred)
-        elif self.rtype == ReSALT_Type.JATIN:
-            alt_pred = sol[0, :]
         else:
             raise ValueError()
         return alt_pred

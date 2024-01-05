@@ -22,7 +22,7 @@ from methods.resalt import ReSALT, ReSALT_Type
 # TODO: fix module-ing
 sys.path.append("/permafrost-prediction/src/py")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
-from methods.utils import LatLonFile, compute_stats, prepare_calm_data, prepare_temp
+from methods.utils import LatLonFile, compute_stats, get_norm_ddt, prepare_calm_data, prepare_temp
 from methods.gt_phase_unwrap import solve_best_phase_unwrap
 from data.consts import CALM_PROCESSSED_DATA_DIR, DATA_PARENT_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
 from data.utils import get_date_for_alos
@@ -39,12 +39,18 @@ def schaefer_method():
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
     paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [21, 43, 55] + [8, 9, 20, 34, 45, 56, 67, 68, 78, 89, 90, 100, 101, 102, 111]
-    ignore_point_ids = paper_specified_ignore + data_specified_ignore
+    data_specified_ignore = [23, 45, 57]
+    nan_ignore = [] #[34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
+    ignore_point_ids = paper_specified_ignore + data_specified_ignore + nan_ignore
     calib_point_id = 61
-    start_year = 2006
-    end_year = 2010
-    rtype = ReSALT_Type.LIU_SCHAEFER
+    # Schaefer 2015 does a strange thing where it uses the ALT from 1995 to 2013, but
+    # the interferograms are only from 2006 to 2010. Hence we need these numbers.
+    start_year = 1995
+    end_year = 2013
+    # start_year_temp = 2006
+    # end_year_temp = 2010
+    rtype = ReSALT_Type.JATIN
+    plot = None#("SCReSALT Results All Data", 'sc_resalt_results_full.png')
     
     # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
     # clarity I will make both use same year set.
@@ -63,7 +69,7 @@ def schaefer_method():
 
     # Use the geo-corrected interferogram products instead of radar geometry
     # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
-    use_geo = False
+    use_geo = True
 
     # Scale measured and estimated ALTs by the DDT at measure time (probe or SAR) to be the one at end-of-season when thaw is maximized
     # TODO: should scaling subsidence be independent of scaling ALT? Technically we could just scale deformations
@@ -83,8 +89,9 @@ def schaefer_method():
         # For Jatin, we need to report the calibration subsidence as if it happened during max thaw, not
         # when the measurement happened. To calculate the right calibration subsidence, we first need
         # to scale the calibration ALT to its average expected value across the years
-        ddts = df_temp[['norm_ddt']].groupby('year').last()
-        end_of_year_sqrt_ddt = np.mean(np.sqrt(ddts['norm_ddt'].values))
+        end_of_year_ddts = df_temp[['norm_ddt']].groupby('year').last()
+        end_of_year_sqrt_ddt = np.mean(np.sqrt(end_of_year_ddts['norm_ddt'].values))
+        # Stefan-scaling of ALT
         upscale = end_of_year_sqrt_ddt/df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]['sqrt_norm_ddt'].mean()
         calib_alt = calib_alt*upscale
     liu_smm = LiuSMM()
@@ -146,7 +153,11 @@ def schaefer_method():
         alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt['sqrt_norm_ddt'].values
     
     alt_gt = df_alt_gt["alt_m"].values
-    compute_stats(alt_pred, alt_gt)
+    compute_stats(alt_pred, alt_gt, plot=plot)
+    
+    plt.scatter(alt_gt, alt_pred)
+    plt.xlabel("ALT Ground-Truth")
+    plt.ylabel("ALT Prediction")
 
     # df_alt_gt.to_csv("df_alt_gt.csv", index=True)
     # np.save("subsidence", E)
@@ -198,6 +209,11 @@ def process_igram(df_calm_points, use_geo, n_horiz, n_vert, isce_output_dir, nee
         pickle_isce_obj = pickle.load(fp)
     radar_wavelength = pickle_isce_obj["reference"]["instrument"]["radar_wavelength"]
     incidence_angle = pickle_isce_obj["reference"]["instrument"]["incidence_angle"] * np.pi / 180
+    # Using inc_explore.py, figured this out. Incidence angle mostly seems the same and is close
+    # to the extracted number, so I am not including parsing it in this analysis. I'm not even
+    # sure how to get this value from ISCE2. Mintpy gets it using the stack stripmap processor.
+    # print("OVERRIDING INCIDENCE ANGLE")
+    # incidence_angle = 0.701683
 
     print("radar wavelength (meteres):", radar_wavelength)
     print("incidence angle (radians):", incidence_angle)
@@ -302,10 +318,6 @@ def get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_outputs_
     return dates, ground_def
 
 
-def get_norm_ddt(df_temp, date):
-    return df_temp.loc[date.year, date.month, date.day]["norm_ddt"]
-
-
 def get_ddt(df_temp, date):
     return df_temp.loc[date.year, date.month, date.day]["ddt"]
 
@@ -376,22 +388,6 @@ def ideal_deformation_to_phase(ideal_deformation: np.array, incidence_angle: flo
     ideal_los_def = ideal_deformation * np.cos(incidence_angle)
     ideal_igram_unw_phase = ideal_los_def / wavelength * (4 * np.pi)
     return ideal_igram_unw_phase
-    
-
-def compute_bounding_box(pixels, n=10):
-    # Initialize min and max coordinates for y and x
-    min_y = np.min(pixels[:, 0])
-    min_x = np.min(pixels[:, 1])
-    max_y = np.max(pixels[:, 0])
-    max_x = np.max(pixels[:, 1])
-
-    # Add 50-pixel margin to each side
-    min_y = max(min_y - n, 0)
-    min_x = max(min_x - n, 0)
-    max_y += n
-    max_x += n
-
-    return ((min_y, min_x), (max_y, max_x))
 
 
 if __name__ == "__main__":

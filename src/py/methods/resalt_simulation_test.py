@@ -111,7 +111,7 @@ def test_constant_smm(rtype: ReSALT_Type):
     # print("Pearson R", pearson_corr)
     
     
-def test_liu_smm(rtype: ReSALT_Type):
+def test_liu_smm(rtype: ReSALT_Type, plot=False):
     smm = LiuSMM()
     n_igrams = 20
     n_pixels = 100
