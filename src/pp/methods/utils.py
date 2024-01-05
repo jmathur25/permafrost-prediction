@@ -74,7 +74,7 @@ class LatLonFile(Enum):
 class LatLon(ABC):
     
     @abstractmethod
-    def find_closest_pixel(self, lat, lon):
+    def find_closest_pixel(self, lat, lon, max_dist_meters=35):
         pass
     
     
@@ -99,7 +99,8 @@ class LatLonXML(LatLon):
         delta = coord.find(".//property[@name='delta']/value").text
         return float(starting_value), float(delta)
 
-    def find_closest_pixel(self, lat, lon):
+    def find_closest_pixel(self, lat, lon, max_dist_meters=35):
+        # TODO: check max_dist_meters
         # int() led to perfect alignment with another tool that converted the .geo
         # into a .tif, and then using a lat/lon to pixel function on the .tif.
         # round() led to discrepencies.
@@ -137,7 +138,8 @@ class LatLonFunc(LatLon):
         print("HORIZ RES (m):", horiz_res)
     
     
-    def find_closest_pixel(self, lat, lon):
+    def find_closest_pixel(self, lat, lon, max_dist_meters=35):
+        # TODO: check max_dist_meters
         assert self.bottom_right_lat <= lat <= self.top_left_lat 
         assert self.top_left_lon <= lon <= self.bottom_right_lon 
         y = int((lat - self.top_left_lat) / self.lat_spacing)
@@ -179,17 +181,25 @@ class LatLonArray(LatLon):
         self.use_kdtree = use_kdtree
         if self.use_kdtree:
             self.flattened_coordinates = np.column_stack((self.lat_arr.ravel(), self.lon_arr.ravel()))
-            self.kd_tree = KDTree(self.flattened_coordinates)
+            mask = ~np.isnan(self.flattened_coordinates).any(axis=1)
+            flattened_coordinates_notnan = self.flattened_coordinates[mask]
+            self.used_indices = np.argwhere(mask)
+            self.kd_tree = KDTree(flattened_coordinates_notnan)
 
     def find_closest_pixel(self, lat, lon, max_dist_meters=35):
         if self.use_kdtree:
             _, closest_pixel_idx_flattened = self.kd_tree.query([lat, lon])
+            closest_pixel_idx_flattened = self.used_indices[closest_pixel_idx_flattened]
+            assert closest_pixel_idx_flattened.shape == (1,)
+            closest_pixel_idx_flattened = closest_pixel_idx_flattened[0]
         else:
             distances = np.sqrt((self.lat_arr - lat) ** 2 + (self.lon_arr - lon) ** 2)
             closest_pixel_idx_flattened = np.argmin(distances)
+            
         closest_pixel_idx = np.unravel_index(closest_pixel_idx_flattened, self.lat_arr.shape)
+        nearest_lat, nearest_lon = self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]
         # TODO: implement proper distance checking
-        dist = haversine((lat, lon), (self.lat_arr[closest_pixel_idx], self.lon_arr[closest_pixel_idx]), unit=Unit.METERS)
+        dist = haversine((lat, lon), (nearest_lat, nearest_lon), unit=Unit.METERS)
         assert dist < max_dist_meters, f"Closest point is {dist} away, which exceeds the max dist"
         return closest_pixel_idx
     

@@ -3,6 +3,7 @@ Main file for reproducing the paper's results.
 """
 
 import datetime
+import pathlib
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,6 +27,7 @@ from pp.data.consts import (
     CALM_PROCESSSED_DATA_DIR,
     ISCE2_OUTPUTS_DIR,
     TEMP_DATA_DIR,
+    WORK_FOLDER,
 )
 from pp.data.utils import get_date_for_alos
 from pp.methods.soil_models import LiuSMM
@@ -67,6 +69,10 @@ def run_analysis():
 
     # Use the geo-corrected interferogram products instead of radar geometry. Improves results.
     use_geo = True
+    
+    # Use MintPy's time-series approach to correcting deformations
+    # TODO: does not currently work and is not well-documented
+    use_mintpy = False
 
     # -- END CONFIG --
 
@@ -102,42 +108,49 @@ def run_analysis():
     matches = np.argwhere(df_alt_gt.index == calib_point_id)
     assert matches.shape == (1, 1)
     calib_idx = matches[0, 0]
-    print("CALIBRATION SUBSIDENCE:", calib_subsidence)
+    print("Calibration subsidence:", calib_subsidence)
 
     resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, rtype)
 
-    # RHS and LHS per-pixel of eq. 2
-    n = len(interferograms)
-    deformations = np.zeros((n, df_alt_gt.shape[0]))
-    dates = [None] * n
-    if multi_threaded:
-        with ThreadPoolExecutor() as executor:
-            pbar = tqdm.tqdm(total=n)
-            futures = []
-            for i, scene_pair in enumerate(interferograms):
-                futures.append(
-                    executor.submit(
-                        worker,
-                        i,
-                        scene_pair,
-                        df_alt_gt,
-                        use_geo,
+    if use_mintpy:
+        print("RUNNING USING MINTPY")
+        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/pp/methods/mintpy/barrow_2006_2010")
+        stack_stripmap_output_dir = WORK_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
+        # Specifically give MintPy just the point id, lat, lon to reduce any chance of data leakage.
+        df_point_locs = df_alt_gt[['latitude', 'longitude']]
+        deformations, dates = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_point_locs, use_geo)
+    else:
+        n = len(interferograms)
+        deformations = np.zeros((n, df_alt_gt.shape[0]))
+        dates = [None] * n
+        if multi_threaded:
+            with ThreadPoolExecutor() as executor:
+                pbar = tqdm.tqdm(total=n)
+                futures = []
+                for i, scene_pair in enumerate(interferograms):
+                    futures.append(
+                        executor.submit(
+                            worker,
+                            i,
+                            scene_pair,
+                            df_alt_gt,
+                            use_geo,
+                        )
                     )
-                )
 
-            for future in as_completed(futures):
-                pbar.update(1)
-                i, deformation, date_pair = future.result()
+                for future in as_completed(futures):
+                    pbar.update(1)
+                    i, deformation, date_pair = future.result()
+                    deformations[i, :] = deformation
+                    dates[i] = date_pair
+                pbar.close()
+        else:
+            for i, (scene1, scene2) in enumerate(interferograms):
+                deformation, date_pair = process_scene_pair(
+                    scene1, scene2, df_alt_gt, use_geo, True
+                )
                 deformations[i, :] = deformation
                 dates[i] = date_pair
-            pbar.close()
-    else:
-        for i, (scene1, scene2) in enumerate(interferograms):
-            deformation, date_pair = process_scene_pair(
-                scene1, scene2, df_alt_gt, use_geo, True
-            )
-            deformations[i, :] = deformation
-            dates[i] = date_pair
 
     alt_pred = resalt.run_inversion(deformations, dates)
     # Scale to measurement time
@@ -247,43 +260,27 @@ def process_igram(
 def process_mintpy_timeseries(
     stack_stripmap_output_dir,
     mintpy_outputs_dir,
-    df_calm_points,
-    df_temp,
+    df_point_locs,
     use_geo,
-    sqrt_ddt_correction,
 ):
     dates, ground_def = get_mintpy_deformation_timeseries(
-        stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo
+        stack_stripmap_output_dir, mintpy_outputs_dir, df_point_locs, use_geo
     )
-    lhs = []
-    rhs = []
+    deformation_per_pixel = []
+    igram_dates = []
+    # We do all (n C 2) combinations of dates.
     for i in range(len(dates)):
         for j in range(i + 1, len(dates)):
             alos_d1 = dates[i]
             alos_d2 = dates[j]
-            delta_t_years = (alos_d2 - alos_d1).days / 365
-            norm_ddt_d2 = get_norm_ddt(df_temp, alos_d2)
-            norm_ddt_d1 = get_norm_ddt(df_temp, alos_d1)
-            if sqrt_ddt_correction:
-                diff = norm_ddt_d2 - norm_ddt_d1
-                if diff > 0:
-                    sqrt_addt_diff = np.sqrt(diff)
-                else:
-                    sqrt_addt_diff = -np.sqrt(-diff)
-            else:
-                sqrt_addt_diff = np.sqrt(norm_ddt_d2) - np.sqrt(norm_ddt_d1)
-            rhs_i = [delta_t_years, sqrt_addt_diff]
-            rhs.append(rhs_i)
-
-            pixel_diff = ground_def[j] - ground_def[i]
-            lhs.append(pixel_diff)
-    lhs = np.stack(lhs)
-    rhs = np.array(rhs)
-    return lhs, rhs
+            deformation_per_pixel.append(ground_def[j] - ground_def[i])
+            igram_dates.append((alos_d1, alos_d2))
+    deformation_per_pixel = np.stack(deformation_per_pixel)
+    return deformation_per_pixel, igram_dates
 
 
 def get_mintpy_deformation_timeseries(
-    stack_stripmap_output_dir, mintpy_outputs_dir, df_calm_points, use_geo
+    stack_stripmap_output_dir, mintpy_outputs_dir, df_point_locs, use_geo
 ):
     # Two sets of lat/lon, one from geom_reference (which references from radar image),
     # which we use to lookup incidence angle. If `use_geo` is passed, we do the actual
@@ -315,13 +312,14 @@ def get_mintpy_deformation_timeseries(
 
     point_to_pixel_inc = []
     point_to_pixel_intfg = []
-    for point, row in df_calm_points.iterrows():
+    for point, row in df_point_locs.iterrows():
         lat = row["latitude"]
         lon = row["longitude"]
-        y, x = lat_lon_inc.find_closest_pixel(lat, lon)
+        # TODO: not sure why max dist is a bit higher for these...
+        y, x = lat_lon_inc.find_closest_pixel(lat, lon, max_dist_meters=50)
         point_to_pixel_inc.append([point, y, x])
 
-        y, x = lat_lon_intfg.find_closest_pixel(lat, lon)
+        y, x = lat_lon_intfg.find_closest_pixel(lat, lon, max_dist_meters=60)
         point_to_pixel_intfg.append([point, y, x])
 
     point_to_pixel_inc = np.array(point_to_pixel_inc)
