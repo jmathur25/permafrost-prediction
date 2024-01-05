@@ -1,3 +1,7 @@
+"""
+Not relevant to paper. Sets up files for MintPy analysis. Might be outdated.
+"""
+
 import os
 import pathlib
 

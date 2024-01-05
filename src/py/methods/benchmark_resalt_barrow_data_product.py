@@ -3,7 +3,7 @@ Get data from
 https://daac.ornl.gov/ABOVE/guides/ReSALT_InSAR_Barrow.html#HDataDescrAccess
 and place at: /work/barrow_2015/
 The folder should look like:
-/permafrost-prediction-shared-data/barrow_2015/
+/work/barrow_2015/
   comp/
   data/
   guide/

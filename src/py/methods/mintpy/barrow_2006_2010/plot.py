@@ -1,3 +1,6 @@
+"""
+Not relevant to paper. TODO: document/clean up
+"""
 
 # %%
 %load_ext autoreload

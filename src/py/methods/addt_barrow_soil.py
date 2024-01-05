@@ -10,7 +10,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 
-sys.path.append("/permafrost-prediction/src/py")
 from methods.utils import prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 
