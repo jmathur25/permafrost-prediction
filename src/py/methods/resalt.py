@@ -1,3 +1,8 @@
+"""
+Contains the ReSALT implementations. There are two varieties:
+1. LIU_SCHAEFER. This is the existing ReSALT used in literature.
+2. SCReSALT. This is the new method.
+"""
 
 from datetime import datetime
 import enum

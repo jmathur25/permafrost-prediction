@@ -1,8 +1,11 @@
+"""
+Given that there was some errors in listing the interferograms in Schaefer et al. (2015),
+this checks that the interferograms match the expected dates and there are no duplicates.
+"""
 
 from datetime import datetime
 import sys
 
-sys.path.append("/permafrost-prediction/src/py")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from data.utils import get_date_for_alos
 
@@ -44,3 +47,5 @@ for i in range(len(SCHAEFER_INTEFEROGRAMS)):
         if SCHAEFER_INTEFEROGRAMS[i] == SCHAEFER_INTEFEROGRAMS[j]:
             raise ValueError(f"row {i} = row {j}")
 assert len(SCHAEFER_INTEFEROGRAMS) == 18
+
+print("All ok!")

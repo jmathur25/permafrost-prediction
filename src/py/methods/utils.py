@@ -1,3 +1,7 @@
+"""
+Contains a bunch of shared code.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 import pathlib
