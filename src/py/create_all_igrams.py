@@ -1,3 +1,7 @@
+"""
+Top-level script to create all interferograms. Uses multiprocessing to speed things up.
+"""
+
 import multiprocessing
 import os
 import pathlib
@@ -5,9 +9,9 @@ import shutil
 import sys
 from methods.create_alos_interferogram import process_alos
 from data.consts import ISCE2_OUTPUTS_DIR
-from methods.igrams import JATIN_SINGLE_SEASON_2006_IGRAMS, SCHAEFER_INTEFEROGRAMS
+from methods.igrams import SCHAEFER_INTEFEROGRAMS
 
-igrams_to_do = [("ALPSRP235992170", "ALPSRP242702170")] # JATIN_SINGLE_SEASON_2006_IGRAMS
+igrams_to_do = SCHAEFER_INTEFEROGRAMS
 
 # ensure no dups
 assert len(set(igrams_to_do)) == len(igrams_to_do)
@@ -20,9 +24,14 @@ def worker(args):
     os.dup2(fd, 1)
     os.dup2(fd, 2)
     process_alos(alos1, alos2)
-    
-print("STARTING PROCS...")
-num_processes = min(len(igrams_to_do), 24)
-with multiprocessing.Pool(num_processes) as pool:
-    pool.map(worker, igrams_to_do)
-print("DONE")
+
+def main():
+    print("STARTING PROCS...")
+    num_processes = min(len(igrams_to_do), 24)
+    with multiprocessing.Pool(num_processes) as pool:
+        pool.map(worker, igrams_to_do)
+    print("DONE")
+
+
+if __name__ == '__main__':
+    main()

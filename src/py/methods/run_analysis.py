@@ -1,3 +1,7 @@
+"""
+Main file for reproducing the paper's results.
+"""
+
 import datetime
 import pathlib
 import pickle
@@ -14,12 +18,8 @@ import h5py
 import tqdm
 import sys
 
-sys.path.append("/permafrost-prediction/src/py")
+# sys.path.append("/permafrost-prediction/src/py")
 from methods.resalt import ReSALT, ReSALT_Type
-
-
-# TODO: fix module-ing
-sys.path.append("/permafrost-prediction/src/py")
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from methods.utils import (
     LatLonFile,
@@ -40,59 +40,49 @@ from methods.soil_models import LiuSMM
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-@click.command()
-def schaefer_method():
+def run_analysis():
     """
-    TODO: generalize
+    This runs the analysis. Read the code to see what to change to run other types of analysis.
     """
+    
+    # -- CONFIG --
+    
+    # The type of algorithm
+    rtype = ReSALT_Type.SCReSALT
+    
+    # Give the title and savepath of where to save results
+    # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
+    plot = None
 
+    # These are specific to Schaefer et al. (2015)
+    paper_specified_ignore = [7, 110, 121]
+    # These are not explicitly provided in Schaefer et al. (2015) but inferred in `benchmark_resalt_barrow_2015.py`
+    data_specified_ignore = [23, 45, 57]
+    ignore_point_ids = paper_specified_ignore + data_specified_ignore
+    # The calibration node to calibrate subsidences in InSAR images
+    calib_point_id = 61
+    
+    # Temperature and ALT data will be grabbed from these years
+    start_year = 1995
+    end_year = 2013
+    
     calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
-    paper_specified_ignore = [7, 110, 121]
-    data_specified_ignore = [23, 45, 57]
-    nan_ignore = []  # [34, 56, 67, 68, 78, 89, 100, 111] + [8, 20, 45, 90, 101, 102]
-    ignore_point_ids = paper_specified_ignore + data_specified_ignore + nan_ignore
-    calib_point_id = 61
-    # Schaefer 2015 does a strange thing where it uses the ALT from 1995 to 2013, but
-    # the interferograms are only from 2006 to 2010. Hence we need these numbers.
-    start_year = 1995
-    end_year = 2013
-    # start_year_temp = 2006
-    # end_year_temp = 2010
-    rtype = ReSALT_Type.JATIN
-    plot = None  # ("SCReSALT Results All Data", 'sc_resalt_results_full.png')
-
-    # TODO: technically this worsens Jatin results as it never sees data from 2010, but for
-    # clarity I will make both use same year set.
-    # if rtype == ReSALT_Type.JATIN:
-    #     # I do not have the full igram set
-    #     end_year = 2009
-
-    si = SCHAEFER_INTEFEROGRAMS  # [
-    #     ("ALPSRP021272170", "ALPSRP027982170"),
-    #     ("ALPSRP074952170", "ALPSRP081662170"),
-    #     ("ALPSRP182312170", "ALPSRP189022170"),
-    #     # ("ALPSRP235992170", "ALPSRP242702170") TODO: run
-    # ]#SCHAEFER_INTEFEROGRAMS
+    interferograms = SCHAEFER_INTEFEROGRAMS
 
     multi_threaded = True
 
-    # Use the geo-corrected interferogram products instead of radar geometry
-    # TODO: for mintpy and traditional ReSALT, I am not sure this has been implemented correctly.
+    # Use the geo-corrected interferogram products instead of radar geometry. Improves results.
     use_geo = True
 
-    # Scale measured and estimated ALTs by the DDT at measure time (probe or SAR) to be the one at end-of-season when thaw is maximized
-    # TODO: should scaling subsidence be independent of scaling ALT? Technically we could just scale deformations
-    # to what they should be at measurement time.
-    ddt_scale = False
+    # -- END CONFIG --
 
     df_temp = prepare_temp(temp_file, start_year, end_year)
     df_peak_alt = prepare_calm_data(
-        calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp
+        calm_file, ignore_point_ids, start_year, end_year, df_temp
     )
     # Stores information on the avg root DDT at measurement time across the years
-    # TODO: technically this assumes each point was measured at the same time, which currently is true.
     df_avg_measurement_alt_sqrt_ddt = (
         df_peak_alt[["point_id", "sqrt_norm_ddt"]].groupby(["point_id"]).mean()
     )
@@ -102,8 +92,8 @@ def schaefer_method():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    if rtype == ReSALT_Type.JATIN:
-        # For Jatin, we need to report the calibration subsidence as if it happened during max thaw, not
+    if rtype == ReSALT_Type.SCReSALT:
+        # For SCReSALT, we need to report the calibration subsidence as if it happened during max thaw, not
         # when the measurement happened. To calculate the right calibration subsidence, we first need
         # to scale the calibration ALT to its average expected value across the years
         end_of_year_ddts = df_temp[["norm_ddt"]].groupby("year").last()
@@ -126,14 +116,14 @@ def schaefer_method():
     resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, rtype)
 
     # RHS and LHS per-pixel of eq. 2
-    n = len(si)
+    n = len(interferograms)
     deformations = np.zeros((n, df_alt_gt.shape[0]))
     dates = [None] * n
     if multi_threaded:
         with ThreadPoolExecutor() as executor:
             pbar = tqdm.tqdm(total=n)
             futures = []
-            for i, scene_pair in enumerate(si):
+            for i, scene_pair in enumerate(interferograms):
                 futures.append(
                     executor.submit(
                         worker,
@@ -151,7 +141,7 @@ def schaefer_method():
                 dates[i] = date_pair
             pbar.close()
     else:
-        for i, (scene1, scene2) in enumerate(si):
+        for i, (scene1, scene2) in enumerate(interferograms):
             deformation, date_pair = process_scene_pair(
                 scene1, scene2, df_alt_gt, use_geo, True
             )
@@ -167,7 +157,7 @@ def schaefer_method():
     # with thaw depth at some point. Jatin formulation assumes this is true throughout the season.
     # TODO: get more datasets, then come up with a robust formulation to handle this problem.
     # It should improve results.
-    if rtype == ReSALT_Type.JATIN:
+    if rtype == ReSALT_Type.SCReSALT:
         alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt["sqrt_norm_ddt"].values
 
     alt_gt = df_alt_gt["alt_m"].values
@@ -457,4 +447,4 @@ def ideal_deformation_to_phase(
 
 
 if __name__ == "__main__":
-    schaefer_method()
+    run_analysis()

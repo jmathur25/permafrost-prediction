@@ -13,7 +13,7 @@ from methods.utils import get_norm_ddt
 
 class ReSALT_Type(enum.Enum):
     LIU_SCHAEFER = 0
-    JATIN = 1
+    SCReSALT = 1
 
 
 class ReSALT:
@@ -55,7 +55,7 @@ class ReSALT:
                     lhs = deformation_per_pixel - delta
                 else:
                     lhs = deformation_per_pixel
-            elif self.rtype == ReSALT_Type.JATIN:
+            elif self.rtype == ReSALT_Type.SCReSALT:
                 if self.calib_alt:
                     expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
                     expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
@@ -76,14 +76,14 @@ class ReSALT:
             rhs_all[i,:] = rhs
         
         print("Solving equations")
-        if only_solve_E or self.rtype == ReSALT_Type.JATIN:
+        if only_solve_E or self.rtype == ReSALT_Type.SCReSALT:
             # Jatin mode cannot solve for R
             rhs_all = rhs_all[:, [1]]
         rhs_pi = np.linalg.pinv(rhs_all)
         sol = rhs_pi @ lhs_all
         
         assert np.isnan(sol).sum() == 0
-        if self.rtype == ReSALT_Type.JATIN:
+        if self.rtype == ReSALT_Type.SCReSALT:
             # alt_pred = sol[0, :]
             # # TOOD: explain
             # nans = np.argwhere(np.isnan(alt_pred))

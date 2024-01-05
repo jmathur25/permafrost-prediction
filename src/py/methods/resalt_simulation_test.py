@@ -131,5 +131,5 @@ def test_liu_smm(rtype: ReSALT_Type, plot=False):
     
 if __name__ == '__main__':
     # test_constant_smm(ReSALT_Type.JATIN)
-    test_liu_smm(ReSALT_Type.JATIN)
+    test_liu_smm(ReSALT_Type.SCReSALT)
     

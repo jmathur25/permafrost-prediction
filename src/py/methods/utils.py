@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 import pathlib
+from typing import Optional, Tuple
 from haversine import haversine, Unit
 from isce.components import isceobj
 from matplotlib import pyplot as plt
@@ -189,7 +190,10 @@ class LatLonArray(LatLon):
         return closest_pixel_idx
     
     
-def compute_stats(alt_pred, alt_gt, plot=None):
+def compute_stats(alt_pred: np.ndarray, alt_gt: np.ndarray, plot: Optional[Tuple[str, pathlib.Path]]=None):
+    """
+    Computes and prints the stats for the predicted ALTs.
+    """
     nan_mask_1 = np.isnan(alt_pred)
     nan_mask_2 = np.isnan(alt_gt)
     print(f"number of nans PRED: {nan_mask_1.sum()}/{len(alt_pred)}")
@@ -276,14 +280,12 @@ def load_calm_data(calm_file, ignore_point_ids, start_year, end_year):
     df_peak_alt['day'] = df_peak_alt['date'].dt.day
     return df_peak_alt 
 
-def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp):
+def prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, df_temp):
     df_peak_alt = load_calm_data(calm_file, ignore_point_ids, start_year, end_year)
     df_peak_alt = pd.merge(df_peak_alt, df_temp[['ddt', 'norm_ddt']], on=['year', 'month', 'day'], how='left')
     df_max_yearly_ddt = df_temp.groupby('year').last()[['norm_ddt']]
     df_max_yearly_ddt = df_max_yearly_ddt.rename({'norm_ddt': 'max_yearly_ddt'}, axis=1)
     df_peak_alt = pd.merge(df_peak_alt, df_max_yearly_ddt, on='year', how='left')
-    if ddt_scale:
-        df_peak_alt['alt_m'] = df_peak_alt['alt_m'] * (df_peak_alt['max_yearly_ddt'] / df_peak_alt['norm_ddt'])
     df_peak_alt['sqrt_norm_ddt'] = np.sqrt(df_peak_alt['norm_ddt'].values)
     return df_peak_alt.drop(['date', 'max_yearly_ddt'], axis=1)
 
