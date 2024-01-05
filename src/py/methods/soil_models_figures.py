@@ -42,16 +42,16 @@ def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None):
     ax.set_xlim(0.0, 0.3)
 
 # %%
-zs = np.linspace(0.0, 1.0, 1000)
+zs = np.linspace(0.0, 2.0, 1000)
 ps_mixed_model = np.array([liu_smm.porosity(z) for z in zs])
 ps_constant = np.array([const_smm.porosity(z) for z in zs])
 subs_mixed_model = np.array([liu_smm.deformation_from_alt(z) for z in zs])
 subs_const_water_model = np.array([const_smm.deformation_from_alt(z) for z in zs])
 
-# Create a figure with two subplots (1 row, 2 columns)
+# Create a figure with 2 rows, 2 columns
 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12))
 
-# TODO: plot limit to 0.5m, and figure out weird curve for green porosity
+# First plot
 ax1.plot(zs, ps_mixed_model, color='b', label='Mixed Soil Model')
 ax1.plot(zs, ps_constant, color='r', label='Constant Porosity Model')
 ax1.set_xlabel("Thaw Depth (m)")
@@ -59,7 +59,7 @@ ax1.set_ylabel("Porosity")
 ax1.set_xlim(0.0, 0.5)
 ax1.set_title("Porosity vs Thaw Depth")
 
-# Second plot: ALT vs Subsidence
+# Second plot
 ax2.plot(zs, subs_mixed_model, color='b', label='Mixed Soil Model')
 ax2.plot(zs, subs_const_water_model, color='r', label='Constant Porosity Model')
 ax2.set_xlabel("Thaw Depth (m)")
@@ -70,10 +70,12 @@ ax2.set_title("Subsidence vs Thaw Depth")
 handles, labels = ax1.get_legend_handles_labels()
 fig.legend(handles, labels, loc='upper center', ncol=2)
 
+# Third plot
 sqrt_ddt_ratio = 3.5
 plot_sqrt_ddt(liu_smm, 'b', sqrt_ddt_ratio, ax3, ylim=(0.0, 0.05))
 plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax3)
 
+# Fourth plot
 sqrt_ddt_ratio = 1.5
 plot_sqrt_ddt(liu_smm, 'b', sqrt_ddt_ratio, ax4, ylim=(0.0, 0.05))
 plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax4)
