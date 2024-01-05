@@ -102,8 +102,11 @@ python3 -m methods.run_analysis
 
 To reproduce the extracted results from the ReSALT data product, open `src/py/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
 
-## Quickstart
-TODO: download Docker container, download igrams and other data?
+## Download the same raw data
+For reproducibility, I've stored the raw data (interferograms, temperature, CALM) in Zenodo. These can be downloaded from TODO and
+placed into the right locations. See `share_data.md` for how this was done and where to place the download files.
+
+Once this has been done, `run_analysis.py` should work.
 
 ## Other
 
