@@ -14,7 +14,7 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 
-sys.path.append("/permafrost-prediction/src/pp")
+sys.path.append("/permafrost-prediction/src")
 from pp.methods.resalt import generate_thaw_subsidence_differences
 from pp.methods.soil_models import LiuSMM, liu_resalt_integrand, ConstantWaterSMM, SCReSALT_Invalid_SMM, ChenSMM
 

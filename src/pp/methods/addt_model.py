@@ -11,7 +11,7 @@ import click
 import numpy as np
 import pandas as pd
 
-sys.path.append("/permafrost-prediction/src/pp")
+sys.path.append("/permafrost-prediction/src")
 from pp.methods.utils import compute_stats, prepare_calm_data, prepare_temp
 from pp.data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 

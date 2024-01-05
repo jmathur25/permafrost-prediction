@@ -85,13 +85,10 @@ def run_analysis():
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
     
-    # TODO: check this and delete
-    # We need to report the calibration subsidence as if it happened during max thaw, not
-    # when the measurement happened. To calculate the right calibration subsidence, we first need
-    # to scale the calibration ALT to its average expected value across the years
-    # end_of_year_ddts = df_temp[["norm_ddt"]].groupby("year").last()
-    # end_of_year_sqrt_ddt = np.mean(np.sqrt(end_of_year_ddts["norm_ddt"].values))
-    # Stefan-scaling of ALT
+    # The calibration ALT needs to be upscaled to the end-of-season thaw depth. The ADDT at
+    # end-of-season is 1.0 because ADDT is normalized. Hence, by using Stefan scaling, we can
+    # use the the end-of-season ADDT, the average sqrt ADDT at measurement time, and the average
+    # ALT at measurement time to upscale to the average end-of-season thaw depth.
     upscale = (
         1.0
         / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id][
