@@ -24,9 +24,9 @@ def main(alos1, alos2):
 
 
 def process_alos(alos1, alos2):
-    # todo: document
-    # todo: refactor to data? any data source could make an interferogram w another?
-    # todo: standardize leaderfile/imagefile saving?
+    """
+    Sets up and runs `stripmapApp.py` to make an interferogram.
+    """
 
     alos1_imagefile, alos1_leaderfile = get_alos_imagefile_leaderfile(alos1)
     alos2_imagefile, alos2_leaderfile = get_alos_imagefile_leaderfile(alos2)

@@ -84,20 +84,21 @@ def run_analysis():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    if rtype == ReSALT_Type.SCReSALT:
-        # For SCReSALT, we need to report the calibration subsidence as if it happened during max thaw, not
-        # when the measurement happened. To calculate the right calibration subsidence, we first need
-        # to scale the calibration ALT to its average expected value across the years
-        end_of_year_ddts = df_temp[["norm_ddt"]].groupby("year").last()
-        end_of_year_sqrt_ddt = np.mean(np.sqrt(end_of_year_ddts["norm_ddt"].values))
-        # Stefan-scaling of ALT
-        upscale = (
-            end_of_year_sqrt_ddt
-            / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id][
-                "sqrt_norm_ddt"
-            ].mean()
-        )
-        calib_alt = calib_alt * upscale
+    
+    # We need to report the calibration subsidence as if it happened during max thaw, not
+    # when the measurement happened. To calculate the right calibration subsidence, we first need
+    # to scale the calibration ALT to its average expected value across the years
+    # end_of_year_ddts = df_temp[["norm_ddt"]].groupby("year").last()
+    # end_of_year_sqrt_ddt = np.mean(np.sqrt(end_of_year_ddts["norm_ddt"].values))
+    # Stefan-scaling of ALT
+    upscale = (
+        1.0
+        / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id][
+            "sqrt_norm_ddt"
+        ].mean()
+    )
+    calib_alt = calib_alt * upscale
+        
     liu_smm = LiuSMM()
     calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
     matches = np.argwhere(df_alt_gt.index == calib_point_id)
@@ -141,18 +142,20 @@ def run_analysis():
             dates[i] = date_pair
 
     alt_pred = resalt.run_inversion(deformations, dates)
-
-    # Scale down the predictions to be those at measurement time. They are currently end-of-season.
-    # TODO: This currently decreases Jatin performance significantly. Schaefer gets away with it because
-    # although they formulate to end-of-season, they calibrate against a direct measurement, hence
-    # 'half-cancelling out' the effect. The fundamental issue is that root DDT stops being correlated
-    # with thaw depth at some point. Jatin formulation assumes this is true throughout the season.
-    # TODO: get more datasets, then come up with a robust formulation to handle this problem.
-    # It should improve results.
-    if rtype == ReSALT_Type.SCReSALT:
-        alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt["sqrt_norm_ddt"].values
+    # Scale to measurement time
+    alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt["sqrt_norm_ddt"].values
 
     alt_gt = df_alt_gt["alt_m"].values
+    
+    # Sanity check
+    err = abs(alt_gt[calib_idx] - alt_pred[calib_idx])
+    assert err < 2e-3
+    
+    # Remove calibration point from ALTs
+    can_use_mask = df_alt_gt.index!=calib_point_id
+    alt_gt = alt_gt[can_use_mask]
+    alt_pred = alt_pred[can_use_mask]
+    
     compute_stats(alt_pred, alt_gt, plot=plot)
 
     plt.scatter(alt_gt, alt_pred)

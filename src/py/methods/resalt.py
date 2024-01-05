@@ -61,17 +61,22 @@ class ReSALT:
                     lhs = deformation_per_pixel
             elif self.rtype == ReSALT_Type.SCReSALT:
                 if self.calib_alt:
-                    expected_date_ref_alt = self.calib_alt * sqrt_norm_ddt_ref
-                    expected_date_ref_sec = self.calib_alt * sqrt_norm_ddt_sec
-                    expected_deformation_ref = self.smm.deformation_from_alt(expected_date_ref_alt)
-                    expected_deformation_sec = self.smm.deformation_from_alt(expected_date_ref_sec)
-                    expected_calib_def = expected_deformation_ref - expected_deformation_sec
+                    calib_ref_thaw_depth = self.calib_alt * sqrt_norm_ddt_ref
+                    calib_sec_thaw_depth = self.calib_alt * sqrt_norm_ddt_sec
+                    calib_ref_subsidence = self.smm.deformation_from_alt(calib_ref_thaw_depth)
+                    calib_sec_subsidence = self.smm.deformation_from_alt(calib_sec_thaw_depth)
+                    calib_def = calib_ref_subsidence - calib_sec_subsidence
                     
                     # Scale the deformations to align with the expected calibration deformation
-                    calib_node_delta = expected_calib_def - deformation_per_pixel[self.calib_idx]
+                    calib_node_delta = calib_def - deformation_per_pixel[self.calib_idx]
                     deformation_per_pixel = deformation_per_pixel + calib_node_delta
                 
                 lhs = find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, self.smm)
+                
+                # Sanity check
+                expected_alt_diff = calib_ref_thaw_depth - calib_sec_thaw_depth
+                err = abs(lhs[self.calib_idx] - expected_alt_diff)
+                assert err < 1e-3
             else:
                 raise ValueError("Unknown rtype:", self.rtype)
                 
@@ -134,11 +139,12 @@ def find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_dd
     thaw_depth_differences, subsidence_differences = generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_thaw_depth_limit)
     sorter = np.argsort(subsidence_differences)
     best_matching_thaw_depth_differences = []
-    for d in deformation_per_pixel:
+    for i, d in enumerate(deformation_per_pixel):
         idx = np.searchsorted(subsidence_differences, d, sorter=sorter)
         if idx == len(subsidence_differences):
+            # This means the subsidence difference is too large.
             idx = len(subsidence_differences) - 1
-        best_matching_thaw_depth_differences.append(thaw_depth_differences[idx])
+        best_matching_thaw_depth_differences.append(thaw_depth_differences[sorter[idx]])
     return best_matching_thaw_depth_differences    
     
     

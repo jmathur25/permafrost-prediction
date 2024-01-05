@@ -93,11 +93,12 @@ df_alt_merged['sub_pred'] = df_alt_merged['Sub_(cm)']/100
 
 # %%
 # Reproduces paper!
-compute_stats(df_alt_merged['alt_pred'].values, df_alt_merged['alt_m'])
+calib_point_id = 61
+can_use_mask = df_alt_merged.index!=calib_point_id
+alt_pred = df_alt_merged['alt_pred'].values[can_use_mask]
+alt_gt = df_alt_merged['alt_m'].values[can_use_mask]
 
-# %%
-# To try scaling to end-of-season. Does nothing.
-compute_stats(df_alt_merged['alt_pred'].values, df_alt_merged['alt_m']*1.0/df_alt_merged['sqrt_norm_ddt'])
+compute_stats(alt_pred, alt_gt)
 
 # %%
 # Mostly confirms Liu SMM aligns with the one used in Schaefer et al. (2015)
