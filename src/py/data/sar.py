@@ -1,3 +1,7 @@
+"""
+Downloads SAR data.
+"""
+
 import os
 import shutil
 from typing import Tuple

@@ -2,10 +2,9 @@
 This is used to save space if interferograms are taking up too much space on your machine.
 """
 
-import pathlib
 import shutil
 
-from igrams import JATIN_SINGLE_SEASON_2006_IGRAMS, SCHAEFER_INTEFEROGRAMS
+from igrams import SCHAEFER_INTEFEROGRAMS
 from data.consts import ISCE2_OUTPUTS_DIR
 
 useless = [

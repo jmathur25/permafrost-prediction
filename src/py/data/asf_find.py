@@ -1,3 +1,9 @@
+"""
+Helper to download data using asf_search. Not needed for the paper because
+the granules were given by Schaefer et al. (2015), but this is helpful
+for finding new granules.
+"""
+
 # %%
 from datetime import datetime
 import asf_search as asf

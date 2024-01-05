@@ -1,3 +1,10 @@
+"""
+Main download script. Use this to download all the data needed to reproduce the paper:
+1. CALM data
+2. Raw SAR data
+3. Temperature data
+"""
+
 import datetime
 import enum
 import pathlib
@@ -7,11 +14,11 @@ import tqdm
 from urllib.parse import urljoin
 import pandas as pd
 import requests
-import code
 
 from data.consts import WORK_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
 from data.sar import alos_palsar_granule
 from data.utils import prompt_user
+from data.download_temp import barrow_temperature
 
 
 class StandardDataFormatColumns(enum.Enum):
@@ -151,6 +158,7 @@ def main():
 
 main.add_command(calm)
 main.add_command(alos_palsar_granule)
+main.add_command(barrow_temperature)
 
 if __name__ == "__main__":
     main()

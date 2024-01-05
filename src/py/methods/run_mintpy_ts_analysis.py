@@ -1,7 +1,5 @@
 import datetime
 import pathlib
-import pickle
-from typing import Optional, Union
 import click
 import numpy as np
 import matplotlib.pyplot as plt

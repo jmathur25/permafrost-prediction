@@ -1,20 +1,21 @@
-import sys
+"""
+Downloads temperature data.
+"""
+
 import click
 import numpy as np
 import pandas as pd
-import tqdm
 
-sys.path.append("/permafrost-prediction/src/py")
 from data.consts import TEMP_DATA_DIR
 
-
+# Data is downloaded from this URL
 URL = "https://gml.noaa.gov/aftp/data/meteorology/in-situ/brw/met_brw_insitu_1_obop_hour_{}.txt"
 
 
 @click.command()
 @click.argument("start_year", type=int)
 @click.argument("end_year", type=int)
-def download_barrow_temp_for_year(start_year, end_year):
+def barrow_temperature(start_year, end_year):
     _download_barrow_temp_for_year(start_year, end_year)
     
 def _download_barrow_temp_for_year(start_year, end_year):
@@ -73,8 +74,3 @@ def download_year(year):
     df_avg = df_brw.groupby(['site_code', 'year', 'month', 'day']).mean()
     df_avg = df_avg.reset_index().drop('hour', axis=1)
     return df_avg
-
-
-if __name__ == '__main__':
-    # download_barrow_temp_for_year()
-    _download_barrow_temp_for_year(1995, 2022)

@@ -5,10 +5,7 @@ Top-level script to create all interferograms. Uses multiprocessing to speed thi
 import multiprocessing
 import os
 import pathlib
-import shutil
-import sys
 from methods.create_alos_interferogram import process_alos
-from data.consts import ISCE2_OUTPUTS_DIR
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 
 igrams_to_do = SCHAEFER_INTEFEROGRAMS

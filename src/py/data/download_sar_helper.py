@@ -1,7 +1,7 @@
+"""
+A helper to download files not from command line. This allows you to use the VSCode debugger.
+"""
 
-import os
-import sys
-sys.path.append("/permafrost-prediction/src/py")
 from data.sar import _download_alos_palsar_granule
 
 username = input("username: ")

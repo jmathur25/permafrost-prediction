@@ -3,22 +3,16 @@ Main file for reproducing the paper's results.
 """
 
 import datetime
-import pathlib
 import pickle
-from typing import Optional, Union
-import click
 import numpy as np
 import matplotlib.pyplot as plt
 
 from osgeo import gdal
 
-import pandas as pd
 
 import h5py
 import tqdm
-import sys
 
-# sys.path.append("/permafrost-prediction/src/py")
 from methods.resalt import ReSALT, ReSALT_Type
 from methods.igrams import SCHAEFER_INTEFEROGRAMS
 from methods.utils import (
@@ -30,7 +24,6 @@ from methods.utils import (
 )
 from data.consts import (
     CALM_PROCESSSED_DATA_DIR,
-    WORK_FOLDER,
     ISCE2_OUTPUTS_DIR,
     TEMP_DATA_DIR,
 )

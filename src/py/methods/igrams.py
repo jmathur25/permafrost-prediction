@@ -26,5 +26,12 @@ SCHAEFER_INTEFEROGRAMS = [
     # ("ALPSRP235992170", "ALPSRP242702170"), # processing error
 ]
 
-
+if __name__ == '__main__':
+    all_granules = []
+    for (g1, g2) in SCHAEFER_INTEFEROGRAMS:
+        all_granules.append(g1)
+        all_granules.append(g2)
+    all_granules = set(all_granules)
+    for granule in all_granules:
+        print(granule)
 

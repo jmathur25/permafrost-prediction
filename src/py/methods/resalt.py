@@ -1,7 +1,7 @@
 
 from datetime import datetime
 import enum
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -9,9 +9,6 @@ import tqdm
 
 from methods.soil_models import SoilMoistureModel
 from methods.utils import get_norm_ddt
-from scipy.stats import pearsonr
-from scipy.optimize import root_scalar
-from scipy.optimize import minimize_scalar
 
 class ReSALT_Type(enum.Enum):
     LIU_SCHAEFER = 0

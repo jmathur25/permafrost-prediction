@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append("/permafrost-prediction/src/py")
-from methods.utils import compute_ddt_ddf, load_calm_data, prepare_calm_data, prepare_temp
+from methods.utils import prepare_temp
 from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR
 
 from scipy.stats import pearsonr

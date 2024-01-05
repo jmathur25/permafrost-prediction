@@ -3,11 +3,9 @@ Simulates thaw and temperature data and compares SCReSALT to ReSALT.
 """
 
 import datetime
-import sys
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
-from scipy.stats import pearsonr
 
 
 from methods.resalt import ReSALT, ReSALT_Type
@@ -103,12 +101,8 @@ def test_constant_smm(rtype: ReSALT_Type):
     alt_pred = alt_pred[1:]
     alt_gt = alt_gt[1:]
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
-    # This bound could be tighter, but we do discrete sampling to solve Jatin variety which induces sampling errors.
+    # This bound could be tighter, but we do discrete sampling to solve ScReSALT variety which induces sampling errors.
     assert rmse < 5e-3
-    # pearson_corr, _ = pearsonr(alt_pred, alt_gt)
-    
-    # print("RMSE", rmse)
-    # print("Pearson R", pearson_corr)
     
     
 def test_liu_smm(rtype: ReSALT_Type, plot=False):
@@ -130,5 +124,5 @@ def test_liu_smm(rtype: ReSALT_Type, plot=False):
     
     
 if __name__ == '__main__':
-    # test_liu_smm(ReSALT_Type.SCReSALT)
+    test_liu_smm(ReSALT_Type.SCReSALT)
     test_liu_smm(ReSALT_Type.LIU_SCHAEFER)
