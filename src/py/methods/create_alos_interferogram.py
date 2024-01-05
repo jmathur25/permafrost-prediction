@@ -1,3 +1,7 @@
+"""
+Creates a single interferogram.
+"""
+
 import os
 import pathlib
 import click

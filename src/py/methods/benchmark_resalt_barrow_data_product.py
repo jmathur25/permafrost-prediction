@@ -1,11 +1,13 @@
-# Get data from
-# https://daac.ornl.gov/ABOVE/guides/ReSALT_InSAR_Barrow.html#HDataDescrAccess
-# and place at: /permafrost-prediction-shared-data/barrow_2015/
-# The folder should look like:
-# /permafrost-prediction-shared-data/barrow_2015/
-#   comp/
-#   data/
-#   guide/
+"""
+Get data from
+https://daac.ornl.gov/ABOVE/guides/ReSALT_InSAR_Barrow.html#HDataDescrAccess
+and place at: /work/barrow_2015/
+The folder should look like:
+/permafrost-prediction-shared-data/barrow_2015/
+  comp/
+  data/
+  guide/
+"""
 
 # %%
 %load_ext autoreload
@@ -16,18 +18,18 @@ import pandas as pd
 import geopandas as gpd
 from shapely import wkt
 from shapely.geometry import Point
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 sys.path.append("/permafrost-prediction/src/py")
 from methods.soil_models import LiuSMM
-from data.consts import CALM_PROCESSSED_DATA_DIR, WORK_FOLDER, ISCE2_OUTPUTS_DIR, TEMP_DATA_DIR
-from methods.utils import LatLonFile, compute_stats, get_norm_ddt, prepare_calm_data, prepare_temp
+from data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR, WORK_FOLDER
+from methods.utils import compute_stats, prepare_calm_data, prepare_temp
 
 
 # %%
-df = pd.read_csv("/permafrost-prediction-shared-data/barrow_2015/comp/ReSALT_barrow.txt", sep=';')
+df = pd.read_csv(WORK_FOLDER / "barrow_2015/comp/ReSALT_barrow.txt", sep=';')
 df['geometry'] = df['WKT'].apply(wkt.loads)
 gdf = gpd.GeoDataFrame(df, geometry='geometry')
 
@@ -46,10 +48,9 @@ end_year = 2013
 paper_specified_ignore = [7, 110, 121]
 data_specified_ignore = [23, 45, 57]
 ignore_point_ids = paper_specified_ignore + data_specified_ignore
-ddt_scale = False
 # %%
 df_temp = prepare_temp(temp_file, start_year, end_year)
-df_peak_alt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, ddt_scale, df_temp)
+df_peak_alt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_year, df_temp)
 
 # Stores information on the avg root DDT at measurement time across the years
 # TODO: technically this assumes each point was measured at the same time, which currently is true.
@@ -99,6 +100,7 @@ compute_stats(df_alt_merged['alt_pred'].values, df_alt_merged['alt_m'])
 compute_stats(df_alt_merged['alt_pred'].values, df_alt_merged['alt_m']*1.0/df_alt_merged['sqrt_norm_ddt'])
 
 # %%
+# Mostly confirms Liu SMM aligns with the one used in Schaefer et al. (2015)
 smm = LiuSMM()
 alts = []
 for sub in df_alt_merged['sub_pred']:
@@ -109,13 +111,11 @@ alts = np.array(alts)
 line_x = np.linspace(0.2, 0.7)
 line_y = line_x
 
-# %%
 plt.scatter(alts, df_alt_merged['alt_pred'], color='b')
 plt.scatter(line_x, line_y, color='r')
 plt.xlabel('alt_smm')
 plt.ylabel('alt_pred')
 
-# %%
 print("RMSE LiuSMM:", np.sqrt(np.mean(np.square(alts-df_alt_merged['alt_pred'].values))))
 
 # %%

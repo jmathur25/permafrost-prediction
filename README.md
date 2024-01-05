@@ -67,6 +67,8 @@ Note: it is a good idea to use a debugger when running Python scripts. They easi
 }
 ```
 
+To reproduce the extracted results from the ReSALT data product, open `src/py/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
+
 ## Quickstart
 TODO: download Docker container, download igrams and other data?
 

@@ -1,3 +1,9 @@
+"""
+Not related to paper. Uses "Decadal changes of surface elevation over permafrost area estimated using reflected GPS signals" to try to validate the subsidence measured in interferograms. Very few studies actually validate that the subsidence looks correct. This means two things can be erroneous: subsidence measurement, or conversion from subsidence to ALT. Right now, those are conflated. This kind of analysis would be interesting to do at a larger scale.
+
+The file `Liu-Larson_2018.tab` must be acquired and placed into /work.
+"""
+
 # %%
 %load_ext autoreload
 %autoreload 2
@@ -14,10 +20,11 @@ from scipy.stats import pearsonr
 sys.path.append("..")
 from data.utils import get_date_for_alos
 from data.consts import WORK_FOLDER, ISCE2_OUTPUTS_DIR
-from methods.igrams import SCHAEFER_INTEFEROGRAMS, get_mintpy_deformation_timeseries, plot_change, process_igram
+from methods.igrams import SCHAEFER_INTEFEROGRAMS
+from methods.run_analysis import get_mintpy_deformation_timeseries, process_igram
 
 # %%
-df_liu_sub_gt = pd.read_csv("/permafrost-prediction-shared-data/Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
+df_liu_sub_gt = pd.read_csv(WORK_FOLDER / "Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
 df_liu_sub_gt['year'] = df_liu_sub_gt['Date/Time'].dt.year
 df_liu_sub_gt['month'] = df_liu_sub_gt['Date/Time'].dt.month
 df_liu_sub_gt['day'] = df_liu_sub_gt['Date/Time'].dt.day
@@ -40,12 +47,12 @@ def get_ec(alos_date, df, allow_nearest):
 
 # %%
 use_mintpy = True
+allow_nearest = True
 
 usable_igrams = []
 if use_mintpy:
     usable_igrams = SCHAEFER_INTEFEROGRAMS
 else:
-    allow_nearest = True
     for (alos1, alos2) in SCHAEFER_INTEFEROGRAMS:
         _, alos_d1 = get_date_for_alos(alos1)
         _, alos_d2 = get_date_for_alos(alos2)
@@ -110,6 +117,7 @@ else:
 
 
 # %%
+# Bad correlation
 pearson_r, _ = pearsonr(sub_expecteds, sub_actuals)
 print("Pearson R", pearson_r)
 plt.scatter(sub_expecteds, sub_actuals)
