@@ -1,7 +1,7 @@
 """
 Not related to paper. Uses "Decadal changes of surface elevation over permafrost area estimated using reflected GPS signals" to try to validate the subsidence measured in interferograms. Very few studies actually validate that the subsidence looks correct. This means two things can be erroneous: subsidence measurement, or conversion from subsidence to ALT. Right now, those are conflated. This kind of analysis would be interesting to do at a larger scale.
 
-The file `Liu-Larson_2018.tab` must be acquired and placed into /work.
+The file `Liu-Larson_2018.tab` must be acquired and placed into /permafrost-prediction/work.
 """
 
 # %%
@@ -19,12 +19,12 @@ from scipy.stats import pearsonr
 
 sys.path.append("..")
 from pp.data.utils import get_date_for_alos
-from pp.data.consts import WORK_FOLDER, ISCE2_OUTPUTS_DIR
+from pp.data.consts import WORK_DIR, ISCE2_OUTPUTS_DIR
 from pp.methods.igrams import SCHAEFER_INTEFEROGRAMS
 from pp.methods.run_analysis import get_mintpy_deformation_timeseries, process_igram
 
 # %%
-df_liu_sub_gt = pd.read_csv(WORK_FOLDER / "Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
+df_liu_sub_gt = pd.read_csv(WORK_DIR / "Liu-Larson_2018.tab", delimiter="\t", skiprows=16, parse_dates=['Date/Time'])
 df_liu_sub_gt['year'] = df_liu_sub_gt['Date/Time'].dt.year
 df_liu_sub_gt['month'] = df_liu_sub_gt['Date/Time'].dt.month
 df_liu_sub_gt['day'] = df_liu_sub_gt['Date/Time'].dt.day
@@ -88,7 +88,7 @@ sub_actuals = []
 if use_mintpy:
     print("Running with MintPy")
     mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/pp/methods/mintpy/barrow_2006_2010")
-    stack_stripmap_output_dir = WORK_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
+    stack_stripmap_output_dir = WORK_DIR / "stack_stripmap_outputs/barrow_2006_2010"
     dates, ground_def = get_mintpy_deformation_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_gt_sub_locs, use_geo)
     for i in range(1, len(dates)):
         alos_d1 = dates[i - 1]

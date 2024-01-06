@@ -16,7 +16,12 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 
-from pp.data.consts import CALM_DOWNLOAD_URL, WORK_FOLDER, CALM_PROCESSSED_DATA_DIR, CALM_RAW_DATA_DIR
+from pp.data.consts import (
+    CALM_DOWNLOAD_URL,
+    WORK_DIR,
+    CALM_PROCESSSED_DATA_DIR,
+    CALM_RAW_DATA_DIR,
+)
 from pp.data.sar import alos_palsar_granule
 from pp.data.utils import prompt_user
 from pp.data.download_temp import barrow_temperature
@@ -124,13 +129,16 @@ class CALMDownloadSite(enum.Enum):
                 date_dfs, axis=0, ignore_index=True, verify_integrity=True
             )
             # Convert from cm to meters and handle 'w', which is replaced with np.nan
-            df_all[StandardDataFormatColumns.ALT_METERS.value] = df_all[StandardDataFormatColumns.ALT_METERS.value].apply(try_float) / 100
+            df_all[StandardDataFormatColumns.ALT_METERS.value] = (
+                df_all[StandardDataFormatColumns.ALT_METERS.value].apply(try_float)
+                / 100
+            )
             StandardDataFormatColumns.save_standardized_dataframe(df_all, "u1")
 
             print("TODO: Download U2 data")
         else:
             raise ValueError(f"Could not match {self}?")
-        
+
 
 def try_float(x):
     try:

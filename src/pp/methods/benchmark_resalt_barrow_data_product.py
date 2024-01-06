@@ -1,9 +1,9 @@
 """
 Get data from
 https://daac.ornl.gov/ABOVE/guides/ReSALT_InSAR_Barrow.html#HDataDescrAccess
-and place at: /work/barrow_2015/
+and place at: /permafrost-prediction/work/barrow_2015/
 The folder should look like:
-/work/barrow_2015/
+/permafrost-prediction/barrow_2015/
   comp/
   data/
   guide/
@@ -24,12 +24,12 @@ import sys
 
 sys.path.append("/permafrost-prediction/src/")
 from pp.methods.soil_models import LiuSMM
-from pp.data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR, WORK_FOLDER
+from pp.data.consts import CALM_PROCESSSED_DATA_DIR, TEMP_DATA_DIR, WORK_DIR
 from pp.methods.utils import compute_stats, prepare_calm_data, prepare_temp
 
 
 # %%
-df = pd.read_csv(WORK_FOLDER / "barrow_2015/comp/ReSALT_barrow.txt", sep=';')
+df = pd.read_csv(WORK_DIR / "barrow_2015/comp/ReSALT_barrow.txt", sep=';')
 df['geometry'] = df['WKT'].apply(wkt.loads)
 gdf = gpd.GeoDataFrame(df, geometry='geometry')
 

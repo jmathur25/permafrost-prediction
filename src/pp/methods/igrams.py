@@ -17,7 +17,7 @@ SCHAEFER_INTEFEROGRAMS = [
     ("ALPSRP081662170", "ALPSRP182312170"),
     # ("ALPSRP081662170", "ALPSRP128632170"), # dup 10
     ("ALPSRP081662170", "ALPSRP189022170"),  # fix
-    # ("ALPSRP081662170", "ALPSRP235992170"),  # fix incorrect listing of palsar for '20100629' row 14.
+    # ("ALPSRP081662170", "ALPSRP235992170"),  # wrong listing of palsar for '20100629' row 14. Code was not rerun with a fix. This is currently excluded.
     ("ALPSRP081662170", "ALPSRP242702170"),
     ("ALPSRP128632170", "ALPSRP182312170"),
     ("ALPSRP128632170", "ALPSRP189022170"),

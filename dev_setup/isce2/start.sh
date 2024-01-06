@@ -8,7 +8,6 @@ REPO_ROOT=$CURRENT_DIR/../../
 docker create \
     --name $CONTAINER_NAME \
     -v $REPO_ROOT:/permafrost-prediction \
-    -v $REPO_ROOT/work:/work \
     -v $CURRENT_DIR/isce2:/opt/isce2/src/isce2 \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     --device /dev/dri:/dev/dri \

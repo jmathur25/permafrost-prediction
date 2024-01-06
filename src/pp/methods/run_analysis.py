@@ -27,7 +27,7 @@ from pp.data.consts import (
     CALM_PROCESSSED_DATA_DIR,
     ISCE2_OUTPUTS_DIR,
     TEMP_DATA_DIR,
-    WORK_FOLDER,
+    WORK_DIR,
 )
 from pp.data.utils import get_date_for_alos
 from pp.methods.soil_models import LiuSMM
@@ -38,12 +38,12 @@ def run_analysis():
     """
     This runs the analysis. Read the code to see what to change to run other types of analysis.
     """
-    
+
     # -- CONFIG --
-    
+
     # The type of algorithm
     rtype = ReSALT_Type.SCReSALT
-    
+
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
     plot = None
@@ -55,11 +55,11 @@ def run_analysis():
     ignore_point_ids = paper_specified_ignore + data_specified_ignore
     # The calibration node to calibrate subsidences in InSAR images
     calib_point_id = 61
-    
+
     # Temperature and ALT data will be grabbed from these years
     start_year = 1995
     end_year = 2013
-    
+
     calm_file = CALM_PROCESSSED_DATA_DIR / "u1/data.csv"
     temp_file = TEMP_DATA_DIR / "barrow/data/data.csv"
 
@@ -69,7 +69,7 @@ def run_analysis():
 
     # Use the geo-corrected interferogram products instead of radar geometry. Improves results.
     use_geo = True
-    
+
     # Use MintPy's time-series approach to correcting deformations
     # TODO: does not currently work and is not well-documented
     use_mintpy = False
@@ -90,19 +90,17 @@ def run_analysis():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    
+
     # The calibration ALT needs to be upscaled to the end-of-season thaw depth. The ADDT at
     # end-of-season is 1.0 because ADDT is normalized. Hence, by using Stefan scaling, we can
     # use the the end-of-season ADDT, the average sqrt ADDT at measurement time, and the average
     # ALT at measurement time to upscale to the average end-of-season thaw depth.
     upscale = (
         1.0
-        / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id][
-            "sqrt_norm_ddt"
-        ].mean()
+        / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]["sqrt_norm_ddt"].mean()
     )
     calib_alt = calib_alt * upscale
-        
+
     liu_smm = LiuSMM()
     calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
     matches = np.argwhere(df_alt_gt.index == calib_point_id)
@@ -114,11 +112,15 @@ def run_analysis():
 
     if use_mintpy:
         print("RUNNING USING MINTPY")
-        mintpy_output_dir = pathlib.Path("/permafrost-prediction/src/pp/methods/mintpy/barrow_2006_2010")
-        stack_stripmap_output_dir = WORK_FOLDER / "stack_stripmap_outputs/barrow_2006_2010"
+        mintpy_output_dir = pathlib.Path(
+            "/permafrost-prediction/src/pp/methods/mintpy/barrow_2006_2010"
+        )
+        stack_stripmap_output_dir = WORK_DIR / "stack_stripmap_outputs/barrow_2006_2010"
         # Specifically give MintPy just the point id, lat, lon to reduce any chance of data leakage.
-        df_point_locs = df_alt_gt[['latitude', 'longitude']]
-        deformations, dates = process_mintpy_timeseries(stack_stripmap_output_dir, mintpy_output_dir, df_point_locs, use_geo)
+        df_point_locs = df_alt_gt[["latitude", "longitude"]]
+        deformations, dates = process_mintpy_timeseries(
+            stack_stripmap_output_dir, mintpy_output_dir, df_point_locs, use_geo
+        )
     else:
         n = len(interferograms)
         deformations = np.zeros((n, df_alt_gt.shape[0]))
@@ -157,16 +159,16 @@ def run_analysis():
     alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt["sqrt_norm_ddt"].values
 
     alt_gt = df_alt_gt["alt_m"].values
-    
+
     # Sanity check
     err = abs(alt_gt[calib_idx] - alt_pred[calib_idx])
     assert err < 2e-3
-    
+
     # Remove calibration point from ALTs
-    can_use_mask = df_alt_gt.index!=calib_point_id
+    can_use_mask = df_alt_gt.index != calib_point_id
     alt_gt = alt_gt[can_use_mask]
     alt_pred = alt_pred[can_use_mask]
-    
+
     compute_stats(alt_pred, alt_gt, plot=plot)
 
     plt.scatter(alt_gt, alt_pred)

@@ -29,12 +29,12 @@ inv_smm = SCReSALT_Invalid_SMM()
 const_smm = ConstantWaterSMM(0.75)
 
 # %%
-def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None):
+def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None, linestyle=None):
     sqrt_ddt_ref = 15
     sqrt_ddt_sec = sqrt_ddt_ref/sqrt_ddt_ratio
     upper_alt_limit = zs[-1]/sqrt_ddt_ratio
-    h1s, h2s, subsidences = generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_alt_limit, N=100)
-    ax.plot(h2s - h1s, subsidences, color=color)
+    thaw_depth_differences, subsidence_differences = generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_alt_limit, N=100)
+    ax.plot(thaw_depth_differences, subsidence_differences, color=color, linestyle=linestyle)
     ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $Q = {sqrt_ddt_ratio}$")
     ax.set_xlabel(r"$h_{t_i} - h_{t_j} \, (m)$")  # Thin space
     ax.set_ylabel(r"$\delta_{t_i} - \delta_{t_j} \, (m)$")
@@ -54,7 +54,7 @@ fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12))
 
 # First plot
 ax1.plot(zs, ps_mixed_model, color='b', label='Mixed Soil Model')
-ax1.plot(zs, ps_constant, color='r', label='Constant Porosity Model')
+ax1.plot(zs, ps_constant, color='r', linestyle='dashed', label='Constant Porosity Model')
 ax1.set_xlabel("Thaw Depth (m)")
 ax1.set_ylabel("Porosity")
 ax1.set_xlim(0.0, 0.5)
@@ -62,7 +62,7 @@ ax1.set_title("Porosity vs Thaw Depth")
 
 # Second plot
 ax2.plot(zs, subs_mixed_model, color='b', label='Mixed Soil Model')
-ax2.plot(zs, subs_const_water_model, color='r', label='Constant Porosity Model')
+ax2.plot(zs, subs_const_water_model, color='r', linestyle='dashed', label='Constant Porosity Model')
 ax2.set_xlabel("Thaw Depth (m)")
 ax2.set_ylabel("Subsidence (m)")
 ax2.set_xlim(0.0, 0.5)
@@ -74,12 +74,12 @@ fig.legend(handles, labels, loc='upper center', ncol=2)
 # Third plot
 sqrt_ddt_ratio = 3.5
 plot_sqrt_ddt(liu_smm, 'b', sqrt_ddt_ratio, ax3, ylim=(0.0, 0.05))
-plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax3)
+plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax3, linestyle='dashed')
 
 # Fourth plot
 sqrt_ddt_ratio = 1.5
 plot_sqrt_ddt(liu_smm, 'b', sqrt_ddt_ratio, ax4, ylim=(0.0, 0.05))
-plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax4)
+plot_sqrt_ddt(const_smm, 'r', sqrt_ddt_ratio, ax4, linestyle='dashed')
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust subplots to fit into the figure area.
 plt.show()
@@ -119,3 +119,5 @@ plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust subplots to fit into the figure
 plt.show()
 fig.savefig("alt_porosity_subsidence_plots_invalid_smm.png")
 
+
+# %%
