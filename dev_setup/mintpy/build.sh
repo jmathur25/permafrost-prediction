@@ -1,4 +1,5 @@
 
 cd "$(dirname "$0")"
 
-docker build -f Dockerfile -t ubuntu_22.04_mintpy:latest .
+IMAGE_NAME=ubuntu_22.04_mintpy:latest
+docker build -f Dockerfile -t $IMAGE_NAME .
