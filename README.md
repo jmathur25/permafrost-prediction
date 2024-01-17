@@ -42,11 +42,11 @@ Tests can be debugged with the following `launch.json`:
 ```
 
 ## Reproducing paper results
-To make the soil model figures, run `src/py/methods/soil_models_figures.py`. This is meant to run in VSCode's Jupyter Notebook integration inside the Docker container.
+To make the soil model figures, run `src/pp/methods/soil_models_figures.py`. This is meant to run in VSCode's Jupyter Notebook integration inside the Docker container.
 
 To reproduce the paper results, first download data:
 ```bash
-cd src/py
+cd src/pp
 python3 -m data.download calm --site Barrow
 python3 -m data.download barrow_temperature 1995 2013
 # The list of all granules (from table A1 in Schaefer et al. 2015)
@@ -72,15 +72,15 @@ machine	urs.earthdata.nasa.gov
 
 Next, run:
 ```bash
-cd src/py
+cd src/pp
 python3 create_all_igrams.py
 ```
 
 Finally:
 ```bash
-cd src/py
+cd src/pp
 # This file should be looked at and edited to make settings changes.
-python3 -m methods.run_analysis
+python3 -m pp.methods.run_analysis
 ```
 
 `run_analysis` can be debugged with the following `launch.json`:
@@ -100,7 +100,7 @@ python3 -m methods.run_analysis
 }
 ```
 
-To reproduce the extracted results from the ReSALT data product, open `src/py/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
+To reproduce the extracted results from the ReSALT data product, open `src/pp/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
 
 ## Other
 
@@ -110,6 +110,6 @@ TODO: better integrate this
 To cleanup unused imports:
 ```
 pip install autoflake
-find src/py -type f -name "*.py" -exec autoflake --remove-all-unused-imports --in-place {} \;
+find src/pp -type f -name "*.py" -exec autoflake --remove-all-unused-imports --in-place {} \;
 ```
 
