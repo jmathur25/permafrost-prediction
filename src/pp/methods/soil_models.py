@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 DENSITY_WATER = 0.997  # g/m^3
 DENSITY_ICE = 0.9168  # g/cm^3
 
-
+# TODO: phase out z
 def liu_resalt_integrand(z):
     """
     Described in "Estimating 1992–2000 average active layer thickness on the Alaskan North Slope from remotely sensed surface subsidence".
@@ -52,6 +52,9 @@ class SoilMoistureModel(ABC):
     def porosity(self, z: float) -> float:
         pass
 
+    @abstractmethod
+    def height_porosity_integration(self, h1, h2) -> float:
+        pass
 
 class LiuSMM(SoilMoistureModel):
     """
@@ -80,6 +83,29 @@ class LiuSMM(SoilMoistureModel):
             integral, _ = quad(liu_resalt_integrand, 0, x)
             return integral - target
 
+        # TODO: adjust bracket??
+        result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
+        assert result.converged
+        return result.root
+    
+    def height_porosity_integration(self, h1, h2) -> float:
+        integral, error = quad(self.height_porosity_integrand, h1, h2)
+        assert error < 1e-5
+        return integral
+    
+    def height_porosity_integrand(self, z):
+        return liu_resalt_integrand(z) * z
+    
+    def thaw_depth_from_addt_n(self, addt, n):
+        def height_porosity_integrand(z):
+            return liu_resalt_integrand(z) * z
+        
+        # Define the function to find its root
+        def objective(x, target):
+            integral, _ = quad(height_porosity_integrand, 0, x)
+            return integral - target
+        
+        integral_val = addt * n
         result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
         assert result.converged
         return result.root

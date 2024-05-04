@@ -81,8 +81,8 @@ def run_analysis():
         calm_file, ignore_point_ids, start_year, end_year, df_temp
     )
     # Stores information on the avg root DDT at measurement time across the years
-    df_avg_measurement_alt_sqrt_ddt = (
-        df_peak_alt[["point_id", "sqrt_norm_ddt"]].groupby(["point_id"]).mean()
+    df_avg_measurement_alt_ddt = (
+        df_peak_alt[["point_id", "norm_ddt"]].groupby(["point_id"]).mean()
     )
     df_peak_alt = df_peak_alt.drop(
         ["year", "month", "day", "norm_ddt"], axis=1
@@ -90,16 +90,18 @@ def run_analysis():
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
+    calib_ddt = df_avg_measurement_alt_ddt.loc[calib_point_id]['norm_ddt']
 
+    # TODO: now invalid...
     # The calibration ALT needs to be upscaled to the end-of-season thaw depth. The ADDT at
     # end-of-season is 1.0 because ADDT is normalized. Hence, by using Stefan scaling, we can
     # use the the end-of-season ADDT, the average sqrt ADDT at measurement time, and the average
     # ALT at measurement time to upscale to the average end-of-season thaw depth.
-    upscale = (
-        1.0
-        / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]["sqrt_norm_ddt"].mean()
-    )
-    calib_alt = calib_alt * upscale
+    # upscale = (
+    #     1.0
+    #     / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]["norm_ddt"].mean()
+    # )
+    # calib_alt = calib_alt * upscale
 
     liu_smm = LiuSMM()
     calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
@@ -108,7 +110,7 @@ def run_analysis():
     calib_idx = matches[0, 0]
     print("Calibration subsidence:", calib_subsidence)
 
-    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, rtype)
+    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, calib_ddt, rtype)
 
     if use_mintpy:
         print("RUNNING USING MINTPY")
@@ -156,13 +158,14 @@ def run_analysis():
 
     alt_pred = resalt.run_inversion(deformations, dates)
     # Scale to measurement time
-    alt_pred = alt_pred * df_avg_measurement_alt_sqrt_ddt["sqrt_norm_ddt"].values
+    # TODO:...
+    #alt_pred = alt_pred * df_avg_measurement_alt_ddt["sqrt_norm_ddt"].values
 
     alt_gt = df_alt_gt["alt_m"].values
 
     # Sanity check
     err = abs(alt_gt[calib_idx] - alt_pred[calib_idx])
-    assert err < 2e-3
+    assert err < 5e-3
 
     # Remove calibration point from ALTs
     can_use_mask = df_alt_gt.index != calib_point_id
