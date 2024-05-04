@@ -168,7 +168,7 @@ def test_liu_smm():
     alt_pred = alt_pred[1:]
     rmse = np.sqrt(mean_squared_error(alt_pred, alt_gt))
     
-    # Non-trivial RMSE for normal ReSALT because it inconsistently handles LiuSMM (as discussed in paper)
+    # Non-trivial RMSE for normal ReSALT because it inconsistently handles LiuSMM (as shown in paper)
     assert rmse > 1e-2
     
     # 2. Test SCReSALT

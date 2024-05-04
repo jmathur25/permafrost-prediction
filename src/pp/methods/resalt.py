@@ -149,6 +149,13 @@ def find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_dd
     
     
 def generate_thaw_subsidence_differences(sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit: float, N=1000):
+    """
+    Generates thaw depth pairs and computes corresponding subsidences. Returns thaw depth differences and corresponding subsidence differences.
+    
+    Args:
+        upper_thaw_depth_limit: Limit the sampled thaw depths to be below this number.
+        N: Number of thaw depth pairs to generate.
+    """
     Q = sqrt_ddt_ref/sqrt_ddt_sec
     # assert sqrt_ddt_ratio != 1.0 # or something close...
     if Q > 1.0:
