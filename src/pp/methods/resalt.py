@@ -23,8 +23,10 @@ class ReSALT_Type(enum.Enum):
     SCReSALT_NS = 2
     
     
-
 class ReSALT:
+    """
+    Solves the ReSALT inversion problem of inferring thaw depth from subsidence and temperature data.
+    """
     def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, calib_idx: int, calib_deformation: float, calib_ddt: float, rtype: ReSALT_Type):
         """
         TODO: add support for gravel calibration point?
@@ -56,21 +58,27 @@ class ReSALT:
             corresponds to the 'reference' and the second index to the 'secondary'. This means the deformation should be derived from:
             phase in the reference - phase in secondary.
         """
+        if only_solve_E:
+            assert self.rtype == ReSALT_Type.LIU_SCHAEFER
+            
         n = deformations.shape[0]
         lhs_all = np.zeros((n, deformations.shape[1]))
-        rhs_all = np.zeros((n, 2))
-        
+        n_rhs = 2 if self.rtype == ReSALT_Type.LIU_SCHAEFER else 1
+        rhs_all = np.zeros((n, n_rhs))
         
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            tasks = []
+            pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
+            futures = []
             for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
-                t = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
-                tasks.append(t)
+                f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
+                futures.append(f)
             
-            for t in tqdm.tqdm(concurrent.futures.as_completed(tasks), total=len(tasks), desc="Processing each interferogram"):
-                i, rhs, lhs = t.result()
+            for f in concurrent.futures.as_completed(futures):
+                i, rhs, lhs = f.result()
                 lhs_all[i,:] = lhs
                 rhs_all[i,:] = rhs
+                pbar.update(1)
+            pbar.close()
                 
         print("Solving equations")
         if only_solve_E:
@@ -160,7 +168,7 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
             calib_node_delta = calib_def - deformation_per_pixel[resalt_obj.calib_idx]
             deformation_per_pixel = deformation_per_pixel + calib_node_delta
         
-        lhs = scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, resalt_obj.smm)
+        lhs = scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, resalt_obj.smm, resalt_obj.upper_thaw_depth_limit, resalt_obj.N)
         
         # Sanity check
         expected_alt_diff = calib_ref_thaw_depth - calib_sec_thaw_depth
@@ -205,12 +213,12 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
     return (i, rhs, lhs)
         
 
-
-def scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit=1.0):
+def scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit, N):
     """
     Implements Algorithm 1 in the paper.
     """
-    thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_thaw_depth_limit)
+    thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ref, sqrt_ddt_sec, smm, upper_thaw_depth_limit, N)
+    # TODO: already sorted?
     sorter = np.argsort(subsidence_differences)
     best_matching_thaw_depth_differences = []
     for d in deformation_per_pixel:
@@ -253,6 +261,7 @@ def scresalt_nonstefan_find_best_thaw_depth_pair(deformation_per_pixel, ddt_ref,
     Implements modified Algorithm 1 presented in Appendix D.
     """
     subsidence_differences, h1s, h2s = scresalt_nonstefan_generate_thaw_subsidence_mapping(ddt_ref, ddt_sec, smm, sdi)
+    # TODO: already sorted?
     sorter = np.argsort(subsidence_differences)
     best_matching_thaw_depth_pairs = []
     for d in deformation_per_pixel:
@@ -270,6 +279,7 @@ def scresalt_nonstefan_generate_thaw_subsidence_mapping(ddf_ref, ddt_sec, smm: S
     Q = ddf_ref/ddt_sec
     h2s = []
     h1s = []
+    # TODO: make `sdi` iterable?
     for i, (h1, h1_int) in enumerate(zip(sdi.h1s, sdi.all_h1_integrals)):
         h2_int = Q * h1_int
         h2 = sdi.find_thaw_depth_for_integral(h2_int)
@@ -280,12 +290,11 @@ def scresalt_nonstefan_generate_thaw_subsidence_mapping(ddf_ref, ddt_sec, smm: S
         h2s.append(h2)
 
         # helps just track index of h1
-        # TODO: make `sdi` iterable?
         h1 = SoilDepth(i, h1)
         h1s.append(h1)
         
     subsidence_differences = []
-    for h2, h1 in zip(h2s, h1s):
+    for h1, h2 in zip(h1s, h2s):
         sub = smm.deformation_from_alt(h2.thaw_depth) - smm.deformation_from_alt(h1.thaw_depth)
         subsidence_differences.append(sub)
     subsidence_differences = np.array(subsidence_differences)

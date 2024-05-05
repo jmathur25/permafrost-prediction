@@ -40,6 +40,7 @@ def invalid_smm(z):
     return p
 
 class SoilMoistureModel(ABC):
+    # TODO: rename ALT -> thaw depth
     @abstractmethod
     def deformation_from_alt(self, alt: float) -> float:
         pass
@@ -49,12 +50,11 @@ class SoilMoistureModel(ABC):
         pass
     
     @abstractmethod
-    def porosity(self, z: float) -> float:
+    def porosity(self, h: float) -> float:
         pass
 
-    @abstractmethod
-    def height_porosity_integrand(self, h1, h2) -> float:
-        pass
+    def height_porosity_integrand(self, h) -> float:
+        return self.porosity(h) * h
     
     def height_porosity_integration(self, h1, h2) -> float:
         integral, error = quad(self.height_porosity_integrand, h1, h2)
@@ -129,11 +129,8 @@ class LiuSMM(SoilMoistureModel):
         assert result.converged
         return result.root
     
-    def height_porosity_integrand(self, z):
-        return liu_resalt_integrand(z) * z
-    
-    def porosity(self, z):
-        return liu_resalt_integrand(z)
+    def porosity(self, h):
+        return liu_resalt_integrand(h)
     
     
 class ChenSMM(SoilMoistureModel):
@@ -183,7 +180,7 @@ class ChenSMM(SoilMoistureModel):
         p_f = 0.6
         porosity = 1 - p_b / p_m * (1 - som) # - p_b / p_s * som * (1 - fc) - p_b / p_f * som * fc
         return porosity
-        
+    
 
 class ConstantWaterSMM(SoilMoistureModel):
     """
@@ -202,8 +199,7 @@ class ConstantWaterSMM(SoilMoistureModel):
     
     def porosity(self, z):
         return self.p
-
-
+    
 class SCReSALT_Invalid_SMM(SoilMoistureModel):
     """
     The counterexample soil model derived in the appendix. This fails SCReSALT's requirement.
@@ -262,8 +258,7 @@ class SCReSALT_Invalid_SMM(SoilMoistureModel):
         else:
             v = self.F3.get_derivative(z)
         return DENSITY_ICE * v / (DENSITY_WATER - DENSITY_ICE)
-
-
+    
 class _Linear:
     def __init__(self, m, b):
         self.m = m

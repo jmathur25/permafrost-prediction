@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.SCReSALT_NS
+    rtype = ReSALT_Type.SCReSALT
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
@@ -143,10 +143,10 @@ def run_analysis():
                     )
 
                 for future in as_completed(futures):
-                    pbar.update(1)
                     i, deformation, date_pair = future.result()
                     deformations[i, :] = deformation
                     dates[i] = date_pair
+                    pbar.update(1)
                 pbar.close()
         else:
             for i, (scene1, scene2) in enumerate(interferograms):
