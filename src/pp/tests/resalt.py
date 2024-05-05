@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.metrics import mean_squared_error
-from pp.methods.resalt import ReSALT, ReSALT_Type, find_best_thaw_depth_difference
+from pp.methods.resalt import ReSALT, ReSALT_Type, scresalt_nonstefan_find_best_thaw_depth_pair
 from pp.methods.soil_models import ConstantWaterSMM, LiuSMM, SoilMoistureModel
 
 
@@ -29,7 +29,7 @@ def test_find_best_thaw_depth_difference(Q):
     sub_small = sub2_small - sub1_small
     expected_thaw_depth_diff_small = alt2_small - alt1_small
     
-    best_thaw_depth_differences = find_best_thaw_depth_difference([sub_large, sub_small], Q, 1, smm)
+    best_thaw_depth_differences = scresalt_nonstefan_find_best_thaw_depth_pair([sub_large, sub_small], Q, 1, smm)
     assert abs(best_thaw_depth_differences[0] - expected_thaw_depth_diff_large) < 1e-3
     assert abs(best_thaw_depth_differences[1] - expected_thaw_depth_diff_small) < 1e-3
 

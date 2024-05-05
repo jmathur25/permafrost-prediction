@@ -3,7 +3,7 @@ Contains soil models mentioned in the paper.
 """
 
 import numpy as np
-from scipy.integrate import quad
+from scipy.integrate import quad, cumulative_trapezoid
 from scipy.optimize import root_scalar
 from abc import ABC, abstractmethod
 
@@ -53,8 +53,49 @@ class SoilMoistureModel(ABC):
         pass
 
     @abstractmethod
-    def height_porosity_integration(self, h1, h2) -> float:
+    def height_porosity_integrand(self, h1, h2) -> float:
         pass
+    
+    def height_porosity_integration(self, h1, h2) -> float:
+        integral, error = quad(self.height_porosity_integrand, h1, h2)
+        assert error < 1e-5
+        return integral
+    
+    def thaw_depth_from_addt_m(self, addt, m) -> float:
+        def objective(x, target):
+            integral, _ = quad(self.height_porosity_integrand, 0, x)
+            return integral - target
+        
+        integral_val = addt * m
+        result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
+        assert result.converged
+        return result.root
+    
+class SoilDepthIntegration:
+    def __init__(self, smm: SoilMoistureModel, upper_thaw_depth_limit, N):
+        self.upper_thaw_depth_limit = upper_thaw_depth_limit
+        self.h1s = np.linspace(0.0, upper_thaw_depth_limit, num=N)
+        h1_integrands = []
+        for h1 in self.h1s:
+            h1_integrands.append(smm.height_porosity_integrand(h1))
+        self.all_h1_integrals = cumulative_trapezoid(h1_integrands, self.h1s, initial=0)
+        
+    def find_thaw_depth_for_integral(self, integral):
+        idx = np.searchsorted(self.all_h1_integrals, integral)
+        if idx == len(self.all_h1_integrals):
+            return None
+        return SoilDepth(idx, self.h1s[idx])
+    
+    def integrate(self, sd1: "SoilDepth", sd2: "SoilDepth"):
+        return self.all_h1_integrals[sd2.index] - self.all_h1_integrals[sd1.index]
+
+    
+class SoilDepth:
+    """Stores the thaw depth and index. Helps for soil depth integration."""
+    def __init__(self, index, thaw_depth):
+        self.index = index
+        self.thaw_depth = thaw_depth
+    
 
 class LiuSMM(SoilMoistureModel):
     """
@@ -88,27 +129,8 @@ class LiuSMM(SoilMoistureModel):
         assert result.converged
         return result.root
     
-    def height_porosity_integration(self, h1, h2) -> float:
-        integral, error = quad(self.height_porosity_integrand, h1, h2)
-        assert error < 1e-5
-        return integral
-    
     def height_porosity_integrand(self, z):
         return liu_resalt_integrand(z) * z
-    
-    def thaw_depth_from_addt_n(self, addt, n):
-        def height_porosity_integrand(z):
-            return liu_resalt_integrand(z) * z
-        
-        # Define the function to find its root
-        def objective(x, target):
-            integral, _ = quad(height_porosity_integrand, 0, x)
-            return integral - target
-        
-        integral_val = addt * n
-        result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
-        assert result.converged
-        return result.root
     
     def porosity(self, z):
         return liu_resalt_integrand(z)
