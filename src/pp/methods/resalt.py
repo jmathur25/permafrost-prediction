@@ -27,15 +27,20 @@ class ReSALT:
     """
     Solves the ReSALT inversion problem of inferring thaw depth from subsidence and temperature data.
     """
-    def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, calib_idx: int, calib_deformation: float, calib_ddt: float, rtype: ReSALT_Type):
+    def __init__(self, df_temp: pd.DataFrame, smm: SoilMoistureModel, calib_idx: int, calib_deformation: float, calib_ddts: np.ndarray, rtype: ReSALT_Type):
         """
         TODO: add support for gravel calibration point?
+        
+        Args:
+            calib_ddts: List of (normalized) DDTS for the calibration point for all years under study. This is used to help scale the calibration ALT. For SCReSALT, we need the average all the square root DDTs. For SCReSALT, we can use the average DDT.
+            
+        TODO: it is confusing to provide the average calibration ALT but the full list of DDTs. This interface should be reworked.
         """
         self.df_temp = df_temp
         self.calib_idx = calib_idx
         self.calib_deformation = calib_deformation
-        self.calib_ddt = calib_ddt
-        self.calib_root_ddt = np.sqrt(calib_ddt)
+        self.calib_ddt = np.mean(calib_ddts)
+        self.calib_root_ddt = np.mean(np.sqrt(calib_ddts))
         self.calib_alt = smm.alt_from_deformation(self.calib_deformation) if self.calib_deformation else None
         self.smm = smm
         self.rtype = rtype
@@ -51,7 +56,7 @@ class ReSALT:
             self.calib_integral = self.smm.height_porosity_integration(0.0, self.calib_alt)
      
 
-    def run_inversion(self, deformations: np.ndarray, dates: List[Tuple[datetime, datetime]], only_solve_E: bool=False) -> np.ndarray:
+    def run_inversion(self, deformations: np.ndarray, dates: List[Tuple[datetime, datetime]], only_solve_E: bool=False, multithreaded=True) -> np.ndarray:
         """
         deformations: 2D-array of (igram_idx, pixel) that stores deformation
         dates: list of dates of the igrams. It is assumed that the first index
@@ -66,23 +71,25 @@ class ReSALT:
         n_rhs = 2 if self.rtype == ReSALT_Type.LIU_SCHAEFER else 1
         rhs_all = np.zeros((n, n_rhs))
         
-        # with concurrent.futures.ProcessPoolExecutor() as executor:
-        #     pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
-        #     futures = []
-        #     for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
-        #         f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
-        #         futures.append(f)
-            
-        #     for f in concurrent.futures.as_completed(futures):
-        #         i, rhs, lhs = f.result()
-        #         lhs_all[i,:] = lhs
-        #         rhs_all[i,:] = rhs
-        #         pbar.update(1)
-        #     pbar.close()
-        for i, (deformation_per_pixel, (date_ref, date_sec)) in tqdm.tqdm(enumerate(zip(deformations, dates)), total=n):
-            _, rhs, lhs = _process_deformations(self, i, deformation_per_pixel, date_ref, date_sec)
-            lhs_all[i,:] = lhs
-            rhs_all[i,:] = rhs
+        if multithreaded:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
+                futures = []
+                for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
+                    f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
+                    futures.append(f)
+                
+                for f in concurrent.futures.as_completed(futures):
+                    i, rhs, lhs = f.result()
+                    lhs_all[i,:] = lhs
+                    rhs_all[i,:] = rhs
+                    pbar.update(1)
+                pbar.close()
+        else:
+            for i, (deformation_per_pixel, (date_ref, date_sec)) in tqdm.tqdm(enumerate(zip(deformations, dates)), total=n):
+                _, rhs, lhs = _process_deformations(self, i, deformation_per_pixel, date_ref, date_sec)
+                lhs_all[i,:] = lhs
+                rhs_all[i,:] = rhs
                 
         print("Solving equations")
         if only_solve_E:
@@ -125,17 +132,21 @@ class ReSALT:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
             if self.calib_idx is not None:
-                delta_E = self.calib_deformation - E[self.calib_idx]
+                # LIU_SCHAEFER is solved by finding delta E with respect to the calibration node.
+                # We then use the measurement deformation and root DDT to compute the true E.
+                calib_E = self.calib_deformation / self.calib_root_ddt
+                delta_E = calib_E - E[self.calib_idx]
                 E = E + delta_E
             alt_pred = []
+            # Scale according to DDT at time of calibration measurement.
+            E = E * self.calib_root_ddt
             for e in E:
                 if e < 1e-3:
                     alt_pred.append(np.nan)
                     continue
                 alt = self.smm.alt_from_deformation(e)
                 alt_pred.append(alt)
-            # Scale answer according to Stefan-equation to time of calibration measurement.
-            alt_pred = np.array(alt_pred) * self.calib_root_ddt
+            alt_pred = np.array(alt_pred)
         else:
             raise ValueError()
         return alt_pred
@@ -147,7 +158,7 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
     norm_ddt_sec = get_norm_ddt(resalt_obj.df_temp, date_sec)
     
     if resalt_obj.rtype == ReSALT_Type.LIU_SCHAEFER:
-        # Solve as deltas over calibration deformation
+        # Solve as deltas over calibration deformation. Later, this will be corrected.
         if resalt_obj.calib_idx is not None:
             delta = deformation_per_pixel[resalt_obj.calib_idx]
             lhs = deformation_per_pixel - delta

@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.SCReSALT
+    rtype = ReSALT_Type.LIU_SCHAEFER
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
@@ -80,28 +80,13 @@ def run_analysis():
     df_peak_alt = prepare_calm_data(
         calm_file, ignore_point_ids, start_year, end_year, df_temp
     )
-    # Stores information on the avg root DDT at measurement time across the years
-    df_avg_measurement_alt_ddt = (
-        df_peak_alt[["point_id", "norm_ddt"]].groupby(["point_id"]).mean()
-    )
+    calib_ddts = df_peak_alt[df_peak_alt['point_id'] == calib_point_id]['norm_ddt'].values
     df_peak_alt = df_peak_alt.drop(
         ["year", "month", "day", "norm_ddt"], axis=1
     )  # not needed anymore
     df_alt_gt = df_peak_alt.groupby("point_id").mean()
 
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
-    calib_ddt = df_avg_measurement_alt_ddt.loc[calib_point_id]['norm_ddt']
-
-    # TODO: now invalid...
-    # The calibration ALT needs to be upscaled to the end-of-season thaw depth. The ADDT at
-    # end-of-season is 1.0 because ADDT is normalized. Hence, by using Stefan scaling, we can
-    # use the the end-of-season ADDT, the average sqrt ADDT at measurement time, and the average
-    # ALT at measurement time to upscale to the average end-of-season thaw depth.
-    # upscale = (
-    #     1.0
-    #     / df_avg_measurement_alt_sqrt_ddt.loc[calib_point_id]["norm_ddt"].mean()
-    # )
-    # calib_alt = calib_alt * upscale
 
     liu_smm = LiuSMM()
     calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
@@ -110,7 +95,7 @@ def run_analysis():
     calib_idx = matches[0, 0]
     print("Calibration subsidence:", calib_subsidence)
 
-    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, calib_ddt, rtype)
+    resalt = ReSALT(df_temp, liu_smm, calib_idx, calib_subsidence, calib_ddts, rtype)
 
     if use_mintpy:
         print("RUNNING USING MINTPY")
