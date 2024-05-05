@@ -157,10 +157,6 @@ def run_analysis():
                 dates[i] = date_pair
 
     alt_pred = resalt.run_inversion(deformations, dates)
-    # Scale to measurement time
-    # TODO:...
-    #alt_pred = alt_pred * df_avg_measurement_alt_ddt["sqrt_norm_ddt"].values
-
     alt_gt = df_alt_gt["alt_m"].values
 
     # Sanity check

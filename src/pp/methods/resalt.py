@@ -66,19 +66,23 @@ class ReSALT:
         n_rhs = 2 if self.rtype == ReSALT_Type.LIU_SCHAEFER else 1
         rhs_all = np.zeros((n, n_rhs))
         
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
-            futures = []
-            for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
-                f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
-                futures.append(f)
+        # with concurrent.futures.ProcessPoolExecutor() as executor:
+        #     pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
+        #     futures = []
+        #     for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
+        #         f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
+        #         futures.append(f)
             
-            for f in concurrent.futures.as_completed(futures):
-                i, rhs, lhs = f.result()
-                lhs_all[i,:] = lhs
-                rhs_all[i,:] = rhs
-                pbar.update(1)
-            pbar.close()
+        #     for f in concurrent.futures.as_completed(futures):
+        #         i, rhs, lhs = f.result()
+        #         lhs_all[i,:] = lhs
+        #         rhs_all[i,:] = rhs
+        #         pbar.update(1)
+        #     pbar.close()
+        for i, (deformation_per_pixel, (date_ref, date_sec)) in tqdm.tqdm(enumerate(zip(deformations, dates)), total=n):
+            _, rhs, lhs = _process_deformations(self, i, deformation_per_pixel, date_ref, date_sec)
+            lhs_all[i,:] = lhs
+            rhs_all[i,:] = rhs
                 
         print("Solving equations")
         if only_solve_E:
