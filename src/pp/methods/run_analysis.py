@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.SCReSALT_NS
+    rtype = ReSALT_Type.SCReSALT
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))

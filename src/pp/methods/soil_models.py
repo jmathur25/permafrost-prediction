@@ -84,19 +84,34 @@ class SoilDepthIntegration:
         idx = np.searchsorted(self.all_h1_integrals, integral)
         if idx == len(self.all_h1_integrals):
             return None
-        return SoilDepth(idx, self.h1s[idx])
+        elif idx == 0:
+            return SoilDepthIntegrationReturn(self.h1s[idx], self.all_h1_integrals[idx])
+        left_idx = idx - 1
+        # Linearly interpolate between thaw depths
+        h1_left = self.h1s[left_idx]
+        h1_right = self.h1s[idx]
+        int_left = self.all_h1_integrals[left_idx]
+        int_right = self.all_h1_integrals[idx]
+        w_left = (int_right - integral) / (int_right - int_left)
+        h_return = h1_left * w_left + h1_right * (1 - w_left)
+        int_return = int_left * w_left + int_right * (1 - w_left)
+        return SoilDepthIntegrationReturn(h_return, int_return)
     
-    def integrate(self, sd1: "SoilDepth", sd2: "SoilDepth"):
-        return self.all_h1_integrals[sd2.index] - self.all_h1_integrals[sd1.index]
+    def integrate(self, sdir1: "SoilDepthIntegrationReturn", sdir2: "SoilDepthIntegrationReturn"):
+        """
+        Integrates depth porosity function from sdir1 thaw depth to sdir2.
+        """
+        return sdir2.integral - sdir1.integral
+    
+class SoilDepthIntegrationReturn:
+    """
+    Stores linearly interpolated thaw depth and the depth-porosity integral.
+    """
+    def __init__(self, h, integral):
+        self.h = h
+        self.integral = integral    
 
     
-class SoilDepth:
-    """Stores the thaw depth and index. Helps for soil depth integration."""
-    def __init__(self, index, thaw_depth):
-        self.index = index
-        self.thaw_depth = thaw_depth
-    
-
 class LiuSMM(SoilMoistureModel):
     """
     Describes in Liu et al. (2012). Referred to as the 'mixed soil model' in the paper and in Liu's paper.
