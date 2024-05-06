@@ -31,9 +31,7 @@ N = 1000
 
 # %%
 def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None, linestyle=None):
-    sqrt_ddt_ref = 15
-    sqrt_ddt_sec = sqrt_ddt_ref/sqrt_ddt_ratio
-    thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ref, sqrt_ddt_sec, smm, MAX_THAW_DEPTH, N)
+    thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ratio, smm, MAX_THAW_DEPTH, N)
     ax.plot(thaw_depth_differences, subsidence_differences, color=color, linestyle=linestyle)
     ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $Q = {sqrt_ddt_ratio}$")
     ax.set_xlabel(r"$h_{t_i} - h_{t_j} \, (m)$")  # Thin space
@@ -122,10 +120,8 @@ const_sdi = SoilDepthIntegration(const_smm, MAX_THAW_DEPTH, N)
 
 # %%
 def plot_ddt(smm: SoilMoistureModel, sdi: SoilDepthIntegration, ddt_ratio, ax, linestyle=None, color=None, label=None):
-    ddt_ref = 1.0
-    ddt_sec = ddt_ref / ddt_ratio
-    subsidence_differences, h1s, h2s = scresalt_nonstefan_generate_thaw_subsidence_mapping(ddt_ref, ddt_sec, smm, sdi)
-    h1s = [h1.thaw_depth for h1 in h1s]
+    subsidence_differences, h1s, h2s = scresalt_nonstefan_generate_thaw_subsidence_mapping(ddt_ratio, smm, sdi)
+    h1s = [h1.h for h1 in h1s]
     ax.plot(h1s, subsidence_differences, color=color, linestyle=linestyle, label=label)
     ax.set_title(fr"Subsidence Difference vs Thaw Depth for DDT ratio $ = {ddt_ratio}$")
     ax.set_xlabel(r"$h_{t_j} \, (m)$")  # Thin space
