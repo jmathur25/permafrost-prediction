@@ -10,8 +10,7 @@ from abc import ABC, abstractmethod
 DENSITY_WATER = 0.997  # g/m^3
 DENSITY_ICE = 0.9168  # g/cm^3
 
-# TODO: phase out z
-def liu_resalt_integrand(z):
+def liu_resalt_integrand(h):
     """
     Described in "Estimating 1992–2000 average active layer thickness on the Alaskan North Slope from remotely sensed surface subsidence".
     This characterizes the mixed soil model in the paper.
@@ -20,11 +19,11 @@ def liu_resalt_integrand(z):
     D_org = 0.18
     M_org = 30
     p_org_max = 140
-    if z <= D_org:
+    if h <= D_org:
         f_org = M_org / (p_org_max * D_org)
     k = 5.5
     D_root = 0.7
-    p_org = k*M_org*np.exp(-k*z)/(1.0 - np.exp(-k*D_root))
+    p_org = k*M_org*np.exp(-k*h)/(1.0 - np.exp(-k*D_root))
     P_org = 0.9
     f_org = np.clip(p_org / p_org_max, 0.0, 1.0)
     P_mineral = 0.44
@@ -32,21 +31,21 @@ def liu_resalt_integrand(z):
     S = 1.0
     return P * S
 
-def invalid_smm(z):
-    if z < 1e-3:
+def invalid_smm(h):
+    if h < 1e-3:
         return 0.9
     a = 10/9 - 0.01
-    p = min(0.9, 1.0/(z + a))
+    p = min(0.9, 1.0/(h + a))
     return p
 
 class SoilMoistureModel(ABC):
     # TODO: rename ALT -> thaw depth
     @abstractmethod
-    def deformation_from_alt(self, alt: float) -> float:
+    def deformation_from_thaw_depth(self, h: float) -> float:
         pass
     
     @abstractmethod
-    def alt_from_deformation(self, deformation: float) -> float:
+    def thaw_depth_from_deformation(self, deformation: float) -> float:
         pass
     
     @abstractmethod
@@ -121,16 +120,16 @@ class LiuSMM(SoilMoistureModel):
         pass
     
     
-    def deformation_from_alt(self, alt):
+    def deformation_from_thaw_depth(self, h):
         # This is relatively slow and is why SCReSALT is much slower than ReSALT. It needs to make subsidence difference to
         # thaw depth difference tables for each Q (basically per interferogram). This is relatively slow, so SCReSALT
         # becomes slow. Precomputing/caching could significantly speed things up.
-        integral, error = quad(liu_resalt_integrand, 0, alt)
+        integral, error = quad(liu_resalt_integrand, 0, h)
         assert error < 1e-5
         return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * integral
 
 
-    def alt_from_deformation(self, deformation):
+    def thaw_depth_from_deformation(self, deformation):
         assert deformation > 0, "Must provide a positive deformation in order to compute ALT"
         integral_val = deformation * (DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE))
 
@@ -157,13 +156,13 @@ class ChenSMM(SoilMoistureModel):
         pass
     
     
-    def deformation_from_alt(self, alt):
-        integral, error = quad(self.porosity, 0, alt)
+    def deformation_from_thaw_depth(self, h):
+        integral, error = quad(self.porosity, 0, h)
         assert error < 1e-5
         return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * integral
         
         
-    def alt_from_deformation(self, deformation):
+    def thaw_depth_from_deformation(self, deformation):
         assert deformation > 0, "Must provide a positive deformation in order to compute ALT"
         integral_val = deformation * (DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE))
 
@@ -176,16 +175,16 @@ class ChenSMM(SoilMoistureModel):
         assert result.converged
         return result.root
     
-    def som(self, z):
+    def som(self, h):
         om_neg_inf = 0.8
         om_inf = 0.05
         B = 50
         z_org = 0.15
-        som = om_neg_inf + (om_inf - om_neg_inf) / (1 + np.exp(-B*(z - z_org)))
+        som = om_neg_inf + (om_inf - om_neg_inf) / (1 + np.exp(-B*(h - z_org)))
         return som
     
-    def porosity(self, z):
-        som = self.som(z)
+    def porosity(self, h):
+        som = self.som(h)
         p_bm = 1.5
         r = 0.05
         p_b = p_bm * np.exp(-r * som)
@@ -206,13 +205,13 @@ class ConstantWaterSMM(SoilMoistureModel):
         assert 0 <= p <= 1
         self.p = p
     
-    def deformation_from_alt(self, alt: float) -> float:
-        return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * alt * self.p
+    def deformation_from_thaw_depth(self, h: float) -> float:
+        return (DENSITY_WATER - DENSITY_ICE) / DENSITY_ICE * h * self.p
     
-    def alt_from_deformation(self, deformation: float) -> float:
+    def thaw_depth_from_deformation(self, deformation: float) -> float:
         return deformation * DENSITY_ICE / (DENSITY_WATER - DENSITY_ICE) / self.p
     
-    def porosity(self, z):
+    def porosity(self, h):
         return self.p
     
 class SCReSALT_Invalid_SMM(SoilMoistureModel):
@@ -254,24 +253,24 @@ class SCReSALT_Invalid_SMM(SoilMoistureModel):
         print("Quad from", self.x2, y1, "with", self.F2.a, self.F2.b, self.F2.c)
         print("Linear from", y1, "with", self.F3.m, self.F3.b)
         
-    def deformation_from_alt(self, alt: float) -> float:
-        if alt <= self.x2:
-            return self.F1(alt)
-        elif alt <= self.y1:
-            return self.F2(alt)
+    def deformation_from_thaw_depth(self, h: float) -> float:
+        if h <= self.x2:
+            return self.F1(h)
+        elif h <= self.y1:
+            return self.F2(h)
         else:
-            return self.F3(alt)
+            return self.F3(h)
     
-    def alt_from_deformation(self, deformation: float) -> float:
+    def thaw_depth_from_deformation(self, deformation: float) -> float:
         raise ValueError("unimplemented")
     
-    def porosity(self, z: float):
-        if z <= self.x2:
-            v = self.F1.get_derivative(z)
-        elif z <= self.y1:
-            v = self.F2.get_derivative(z)
+    def porosity(self, h: float):
+        if h <= self.x2:
+            v = self.F1.get_derivative(h)
+        elif h <= self.y1:
+            v = self.F2.get_derivative(h)
         else:
-            v = self.F3.get_derivative(z)
+            v = self.F3.get_derivative(h)
         return DENSITY_ICE * v / (DENSITY_WATER - DENSITY_ICE)
     
 class _Linear:

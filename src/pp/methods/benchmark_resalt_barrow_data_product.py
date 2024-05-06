@@ -105,7 +105,7 @@ compute_stats(alt_pred, alt_gt)
 smm = LiuSMM()
 alts = []
 for sub in df_alt_merged['sub_pred']:
-    alt = smm.alt_from_deformation(sub)
+    alt = smm.thaw_depth_from_deformation(sub)
     alts.append(alt)
 alts = np.array(alts)
 

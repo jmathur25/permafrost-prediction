@@ -44,8 +44,8 @@ def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None, linestyle=None):
 zs = np.linspace(0.0, MAX_THAW_DEPTH, 1000)
 ps_mixed_model = np.array([liu_smm.porosity(z) for z in zs])
 ps_constant = np.array([const_smm.porosity(z) for z in zs])
-subs_mixed_model = np.array([liu_smm.deformation_from_alt(z) for z in zs])
-subs_const_water_model = np.array([const_smm.deformation_from_alt(z) for z in zs])
+subs_mixed_model = np.array([liu_smm.deformation_from_thaw_depth(z) for z in zs])
+subs_const_water_model = np.array([const_smm.deformation_from_thaw_depth(z) for z in zs])
 
 # Create a figure with 2 rows, 2 columns
 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12))
@@ -85,7 +85,7 @@ fig.savefig("thaw_depth_porosity_subsidence_plots.png")
 
 # %%
 ps_inv_model = np.array([inv_smm.porosity(z) for z in zs])
-subs_inv_model = np.array([inv_smm.deformation_from_alt(z) for z in zs])
+subs_inv_model = np.array([inv_smm.deformation_from_thaw_depth(z) for z in zs])
 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12))
 
 color = 'purple'

@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.SCReSALT
+    rtype = ReSALT_Type.SCReSALT_NS
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
@@ -89,7 +89,7 @@ def run_analysis():
     calib_alt = df_alt_gt.loc[calib_point_id]["alt_m"]
 
     liu_smm = LiuSMM()
-    calib_subsidence = liu_smm.deformation_from_alt(calib_alt)
+    calib_subsidence = liu_smm.deformation_from_thaw_depth(calib_alt)
     matches = np.argwhere(df_alt_gt.index == calib_point_id)
     assert matches.shape == (1, 1)
     calib_idx = matches[0, 0]

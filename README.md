@@ -17,6 +17,8 @@ cd src
 pytest pp/tests/resalt.py
 ```
 This uses simulated data to show how SCReSALT outperforms ReSALT on soil models that don't have constant porosities.
+It also shows how SCReSALT-NS outperforms SCReSALT under non-Stefan soil dynamics.
+The tests can take several minutes to run.
 
 Tests can be debugged with the following `launch.json`:
 ```json

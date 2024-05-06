@@ -41,7 +41,7 @@ class ReSALT:
         self.calib_deformation = calib_deformation
         self.calib_ddt = np.mean(calib_ddts)
         self.calib_root_ddt = np.mean(np.sqrt(calib_ddts))
-        self.calib_alt = smm.alt_from_deformation(self.calib_deformation) if self.calib_deformation else None
+        self.calib_alt = smm.thaw_depth_from_deformation(self.calib_deformation) if self.calib_deformation else None
         self.smm = smm
         self.rtype = rtype
         
@@ -160,7 +160,7 @@ class ReSALT:
                 if e < 1e-3:
                     alt_pred.append(np.nan)
                     continue
-                alt = self.smm.alt_from_deformation(e)
+                alt = self.smm.thaw_depth_from_deformation(e)
                 alt_pred.append(alt)
             # If we used Definition 1, we would now scale by multiplying by self.calib_root_ddt
             alt_pred = np.array(alt_pred)
@@ -192,15 +192,15 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
             # Correct given deformations
             calib_ref_thaw_depth = resalt_obj.calib_alt * sqrt_norm_ddt_ref/resalt_obj.calib_root_ddt
             calib_sec_thaw_depth = resalt_obj.calib_alt * sqrt_norm_ddt_sec/resalt_obj.calib_root_ddt
-            calib_ref_subsidence = resalt_obj.smm.deformation_from_alt(calib_ref_thaw_depth)
-            calib_sec_subsidence = resalt_obj.smm.deformation_from_alt(calib_sec_thaw_depth)
+            calib_ref_subsidence = resalt_obj.smm.deformation_from_thaw_depth(calib_ref_thaw_depth)
+            calib_sec_subsidence = resalt_obj.smm.deformation_from_thaw_depth(calib_sec_thaw_depth)
             calib_def = calib_ref_subsidence - calib_sec_subsidence
             
             # Scale the deformations to align with the expected calibration deformation
             calib_node_delta = calib_def - deformation_per_pixel[resalt_obj.calib_idx]
             deformation_per_pixel = deformation_per_pixel + calib_node_delta
         
-        lhs = scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref, sqrt_norm_ddt_sec, resalt_obj.smm, resalt_obj.upper_thaw_depth_limit, resalt_obj.N)
+        lhs = scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_norm_ddt_ref/sqrt_norm_ddt_sec, resalt_obj.smm, resalt_obj.upper_thaw_depth_limit, resalt_obj.N)
         
         # Sanity check
         expected_alt_diff = calib_ref_thaw_depth - calib_sec_thaw_depth
@@ -219,8 +219,8 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
             if calib_sec_thaw_depth is None:
                 calib_sec_thaw_depth = resalt_obj.upper_thaw_depth_limit
             
-            calib_ref_subsidence = resalt_obj.smm.deformation_from_alt(calib_ref_thaw_depth)
-            calib_sec_subsidence = resalt_obj.smm.deformation_from_alt(calib_sec_thaw_depth)
+            calib_ref_subsidence = resalt_obj.smm.deformation_from_thaw_depth(calib_ref_thaw_depth)
+            calib_sec_subsidence = resalt_obj.smm.deformation_from_thaw_depth(calib_sec_thaw_depth)
             calib_def = calib_ref_subsidence - calib_sec_subsidence
             
             # Scale the deformations to align with the expected calibration deformation
@@ -245,11 +245,10 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
     return (i, rhs, lhs)
         
 
-def scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ref, sqrt_ddt_sec, smm: SoilMoistureModel, upper_thaw_depth_limit, N):
+def scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_ratio, smm: SoilMoistureModel, upper_thaw_depth_limit, N):
     """
     Implements Algorithm 1 in the paper.
     """
-    sqrt_ddt_ratio = sqrt_ddt_ref/sqrt_ddt_sec
     thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ratio, smm, upper_thaw_depth_limit, N)
     assert check_scresalt_requirement(subsidence_differences, sqrt_ddt_ratio**2), "SCReSALT requirement failed"
     sorter = np.arange(0, len(subsidence_differences), 1)
@@ -284,7 +283,7 @@ def scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ratio, smm: SoilMoistureM
     h2s = sqrt_ddt_ratio * h1s
     subsidence_differences = []
     for h2, h1 in zip(h2s, h1s):
-        sub = smm.deformation_from_alt(h2) - smm.deformation_from_alt(h1)
+        sub = smm.deformation_from_thaw_depth(h2) - smm.deformation_from_thaw_depth(h1)
         subsidence_differences.append(sub)
     subsidence_differences = np.array(subsidence_differences)
     return h2s - h1s, subsidence_differences
@@ -334,7 +333,7 @@ def scresalt_nonstefan_generate_thaw_subsidence_mapping(ddt_ratio, smm: SoilMois
         
     subsidence_differences = []
     for h1, h2 in zip(h1s, h2s):
-        sub = smm.deformation_from_alt(h2.h) - smm.deformation_from_alt(h1.h)
+        sub = smm.deformation_from_thaw_depth(h2.h) - smm.deformation_from_thaw_depth(h1.h)
         subsidence_differences.append(sub)
     subsidence_differences = np.array(subsidence_differences)
     return subsidence_differences, h1s, h2s
