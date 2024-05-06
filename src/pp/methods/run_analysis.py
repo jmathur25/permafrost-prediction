@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.LIU_SCHAEFER
+    rtype = ReSALT_Type.SCReSALT_NS
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
@@ -141,7 +141,7 @@ def run_analysis():
                 deformations[i, :] = deformation
                 dates[i] = date_pair
 
-    alt_pred = resalt.run_inversion(deformations, dates)
+    alt_pred = resalt.run_inversion(deformations, dates, multithreaded=multi_threaded)
     alt_gt = df_alt_gt["alt_m"].values
 
     # Sanity check

@@ -132,9 +132,21 @@ class ReSALT:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
             if self.calib_idx is not None:
-                # LIU_SCHAEFER is solved by finding delta E with respect to the calibration node.
-                # We then use the measurement deformation and root DDT to compute the true E.
+                # LIU_SCHAEFER is solved by finding delta E with respect to the calibration node at the
+                # end of the season. "End of season" could be interpreted in two ways:
+                # 1. When DDT is maximized or stops increasing
+                # 2. When measurements of thaw depth were taken
+                # Different results arise depending on which definition is taken. The following text
+                # from "Remotely Sensed Active Layer Thickness (ReSALT) at Barrow, Alaska Using Interferometric Synthetic Aperture Radar" suggests to use definition 2:
+                # "We calculated the long-term average of the in situ ALT measurements at this node and estimated the expected seasonal deformation using Equation (3) below. We then assumed that this represented a known deformation and used this location as the reference point to calibrate the subsidence for the entire domain."
+                
+                # Definition 2:
                 calib_E = self.calib_deformation / self.calib_root_ddt
+                # Definition 1:
+                # eos_calib_alt = self.calib_alt * 1.0/self.calib_root_ddt
+                # eos_calib_def = self.smm.deformation_from_alt(eos_calib_alt)
+                # calib_E = eos_calib_def / 1.0 # 1.0 signifies end-of-season root DDT of 1.0
+                
                 delta_E = calib_E - E[self.calib_idx]
                 E = E + delta_E
             alt_pred = []
@@ -146,6 +158,7 @@ class ReSALT:
                     continue
                 alt = self.smm.alt_from_deformation(e)
                 alt_pred.append(alt)
+            # If we used Definition 1, we would now scale by multiplying by self.calib_root_ddt
             alt_pred = np.array(alt_pred)
         else:
             raise ValueError()
