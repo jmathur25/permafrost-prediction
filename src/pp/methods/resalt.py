@@ -232,8 +232,8 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
         expected_alt_diff = calib_ref_thaw_depth - calib_sec_thaw_depth
         diff = tdp[resalt_obj.calib_idx][1].h - tdp[resalt_obj.calib_idx][0].h
         err = abs(diff - expected_alt_diff)
-        # TODO: Can lower this by sampling more solutions or interpolation, but net results do not change much so not bothering.
-        assert err < 5e-3
+        # TODO: two of the igrams had ~0.0014 err. Didn't look into why. Probably not a big deal.
+        assert err < 2e-3
         lhs = []
         for (h1, h2) in tdp:
             lhi = resalt_obj.sdi.integrate(h1, h2)
@@ -257,6 +257,7 @@ def scresalt_find_best_thaw_depth_difference(deformation_per_pixel, sqrt_ddt_rat
         sorter = sorter[::-1]
     best_matching_thaw_depth_differences = []
     for d in deformation_per_pixel:
+        # TODO: interpolate here?
         idx = np.searchsorted(subsidence_differences, d, sorter=sorter)
         if idx == len(subsidence_differences):
             # This means the subsidence difference is too large. Substitute with largest possible pair.
@@ -304,6 +305,7 @@ def scresalt_nonstefan_find_best_thaw_depth_pair(deformation_per_pixel, ddt_ref,
         sorter = sorter[::-1]
     best_matching_thaw_depth_pairs = []
     for d in deformation_per_pixel:
+        # TODO: interpolate here?
         idx = np.searchsorted(subsidence_differences, d, sorter=sorter)
         if idx == len(subsidence_differences):
             # This means the subsidence difference is too large. Substitute with largest possible pair.
