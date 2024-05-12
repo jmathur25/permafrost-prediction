@@ -142,8 +142,8 @@ class ReSALT:
             E_idx = 0 if only_solve_E else 1
             E = sol[E_idx, :]
             if self.calib_idx is not None:
-                # LIU_SCHAEFER is solved by finding delta E with respect to the calibration node at the
-                # end of the season. "End of season" could be interpreted in two ways:
+                # LIU_SCHAEFER is solved by finding delta E with respect to the calibration node at the end of the season.
+                # "End of season" could be interpreted in two ways:
                 # 1. When DDT is maximized or stops increasing
                 # 2. When measurements of thaw depth were taken
                 # Different results arise depending on which definition is taken. The following text
