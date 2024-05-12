@@ -11,7 +11,7 @@ Now, setup the dev environment. Follow the instructions in `dev_setup/README.md`
 Note: it is a good idea to use a debugger when running Python scripts. They allow you to set breakpoints and investigate intermediate values. Scripts also easily break and using the debugger will save you time in fixing the script. Please make an issue/PR for any errors encountered. I develop by defining a `launch.json` in `.vscode` and using that to test scripts. I'll share a few examples with the instructions below.
 
 ## Seeing the algorithm work
-To understand the algorithm, look at `src/pp/tests/resalt.py`. You can run this test with:
+To understand the algorithm, start with `src/pp/tests/resalt.py`. This sets up a test case with no external data dependencies and will allow you to explore the code. You can run this test with:
 ```
 cd src
 pytest pp/tests/resalt.py
@@ -35,7 +35,7 @@ Tests can be debugged with the following `launch.json`:
                 "pp/tests/resalt.py",
                 // Optional, to run just one test:
                 // "-k",
-                // "test_liu_smm"
+                // "test_liu_smm_with_stefan_soil_dynamics"
             ],
             "console": "integratedTerminal",
         }
@@ -48,9 +48,9 @@ To make the soil model figures, run `src/pp/methods/soil_models_figures.py`. Thi
 
 To reproduce the paper results, first download data:
 ```bash
-cd src/pp
-python3 -m data.download calm --site Barrow
-python3 -m data.download barrow_temperature 1995 2013
+cd src
+python3 -m pp.data.download calm --site Barrow
+python3 -m pp.data.download barrow_temperature 1995 2013
 # The list of all granules (from table A1 in Schaefer et al. 2015)
 # ALPSRP235992170
 # ALPSRP182312170
@@ -62,7 +62,7 @@ python3 -m data.download barrow_temperature 1995 2013
 # ALPSRP027982170
 # ALPSRP074952170
 # It might be best to do these one at a time to make sure things work, or at least test one first.
-python3 -m data.download alos_palsar_granule <EarthData username> <EarthData password> <ALOS PALSAR granules, seperated by spaces> 
+python3 -m pp.data.download alos_palsar_granule <EarthData username> <EarthData password> <ALOS PALSAR granules, seperated by spaces> 
 ```
 
 To process the SAR imagery into interferograms, create a file at `~/.netrc` (TODO: test again):
@@ -74,13 +74,13 @@ machine	urs.earthdata.nasa.gov
 
 Next, run:
 ```bash
-cd src/pp
-python3 create_all_igrams.py
+cd src
+python3 -m pp.create_all_igrams
 ```
 
 Finally:
 ```bash
-cd src/pp
+cd src
 # This file should be looked at and edited to make settings changes.
 python3 -m pp.methods.run_analysis
 ```
@@ -102,7 +102,7 @@ python3 -m pp.methods.run_analysis
 }
 ```
 
-To reproduce the extracted results from the ReSALT data product, open `src/pp/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
+To reproduce the extracted results from the ReSALT data product, open `src/pp/methods/benchmark_resalt_barrow_data_product.py`, follow the directions, and run the script.
 
 ## Other
 

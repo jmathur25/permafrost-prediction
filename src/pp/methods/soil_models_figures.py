@@ -9,7 +9,6 @@ Creates the figures for soil models.
 # %%
 import sys
 from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
 import numpy as np
 
 
@@ -33,7 +32,7 @@ N = 1000
 def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None, linestyle=None):
     thaw_depth_differences, subsidence_differences = scresalt_generate_thaw_subsidence_mapping(sqrt_ddt_ratio, smm, MAX_THAW_DEPTH, N)
     ax.plot(thaw_depth_differences, subsidence_differences, color=color, linestyle=linestyle)
-    ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $Q = {sqrt_ddt_ratio}$")
+    ax.set_title(fr"Subsidence Difference vs Thaw Depth Difference for $K = {sqrt_ddt_ratio}$")
     ax.set_xlabel(r"$h_{t_i} - h_{t_j} \, (m)$")  # Thin space
     ax.set_ylabel(r"$\delta_{t_i} - \delta_{t_j} \, (m)$")
     if ylim is not None:
@@ -41,7 +40,7 @@ def plot_sqrt_ddt(smm, color, sqrt_ddt_ratio, ax, ylim=None, linestyle=None):
     ax.set_xlim(0.0, 0.3)
 
 # %%
-zs = np.linspace(0.0, MAX_THAW_DEPTH, 1000)
+zs = np.linspace(0.0, MAX_THAW_DEPTH, N)
 ps_mixed_model = np.array([liu_smm.porosity(z) for z in zs])
 ps_constant = np.array([const_smm.porosity(z) for z in zs])
 subs_mixed_model = np.array([liu_smm.deformation_from_thaw_depth(z) for z in zs])
@@ -94,6 +93,7 @@ ax1.plot(zs, ps_inv_model, color=color, label='Invalid Model')
 ax1.set_xlabel("Thaw Depth (m)")
 ax1.set_ylabel("Porosity")
 ax1.set_xlim(0.0, 0.5)
+ax1.set_ylim(0.0, 1.0)
 ax1.set_title("Porosity vs Thaw Depth")
 
 # Second plot: ALT vs Subsidence

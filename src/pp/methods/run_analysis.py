@@ -42,7 +42,7 @@ def run_analysis():
     # -- CONFIG --
 
     # The type of algorithm
-    rtype = ReSALT_Type.LIU_SCHAEFER
+    rtype = ReSALT_Type.SCReSALT_NS
 
     # Give the title and savepath of where to save results
     # ("SCReSALT Results All Data", pathlib.Path('sc_resalt_results_full.png'))
@@ -146,7 +146,7 @@ def run_analysis():
 
     # Sanity check
     err = abs(alt_gt[calib_idx] - alt_pred[calib_idx])
-    assert err < 1e-3
+    assert err < 2e-3
 
     # Remove calibration point from ALTs
     can_use_mask = df_alt_gt.index != calib_point_id

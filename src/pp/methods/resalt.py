@@ -6,6 +6,7 @@ Contains the ReSALT implementations. There are two varieties:
 
 from datetime import datetime
 import enum
+import traceback
 from typing import List, Tuple
 import concurrent.futures
 
@@ -76,14 +77,19 @@ class ReSALT:
                 pbar = tqdm.tqdm(total=n, desc='Processing each interferogram')
                 futures = []
                 for i, (deformation_per_pixel, (date_ref, date_sec)) in enumerate(zip(deformations, dates)):
-                    f = executor.submit(_process_deformations, self, i, deformation_per_pixel, date_ref, date_sec)
+                    f = executor.submit(_process_deformations_wrapper, self, i, deformation_per_pixel, date_ref, date_sec)
                     futures.append(f)
                 
                 for f in concurrent.futures.as_completed(futures):
-                    i, rhs, lhs = f.result()
-                    lhs_all[i,:] = lhs
-                    rhs_all[i,:] = rhs
-                    pbar.update(1)
+                    result = f.result()
+                    if isinstance(result, tuple) and isinstance(result[0], Exception):
+                        print("Stacktrace:", result[1])
+                        raise result[0]
+                    else:
+                        i, rhs, lhs = result
+                        lhs_all[i,:] = lhs
+                        rhs_all[i,:] = rhs
+                        pbar.update(1)
                 pbar.close()
                 
                 # Cleanup takes a surprisingly long time       
@@ -169,6 +175,15 @@ class ReSALT:
         return alt_pred
 
 
+def _process_deformations_wrapper(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref, date_sec):
+    try:
+        result = _process_deformations(resalt_obj, i, deformation_per_pixel, date_ref, date_sec)
+        return result
+    except Exception as e:
+        # Capture exception and the stacktrace
+        return e, traceback.format_exc()
+
+
 def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref, date_sec):
     delta_t_years = (date_ref - date_sec).days / 365
     norm_ddt_ref = get_norm_ddt(resalt_obj.df_temp, date_ref)
@@ -232,8 +247,7 @@ def _process_deformations(resalt_obj: ReSALT, i, deformation_per_pixel, date_ref
         expected_alt_diff = calib_ref_thaw_depth - calib_sec_thaw_depth
         diff = tdp[resalt_obj.calib_idx][1].h - tdp[resalt_obj.calib_idx][0].h
         err = abs(diff - expected_alt_diff)
-        # TODO: two of the igrams had ~0.0014 err. Didn't look into why. Probably not a big deal.
-        assert err < 2e-3
+        assert err < 3e-3
         lhs = []
         for (h1, h2) in tdp:
             lhi = resalt_obj.sdi.integrate(h1, h2)

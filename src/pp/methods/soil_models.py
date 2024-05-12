@@ -50,10 +50,33 @@ class SoilMoistureModel(ABC):
     
     @abstractmethod
     def porosity(self, h: float) -> float:
+        """Porosity of soil when water is liquid"""
         pass
+    
+    def porosity_frozen(self, h: float) -> float:
+        """
+        Under a fully saturated soil, the porosity changes when water freezes
+        because ice takes up more volume. This function computes the porosity
+        when the water is ice under the following assumptions:
+        1. Fully saturated soil
+        2. No water loss
+        3. No soil compression (reduction in volume) due to water freezing.
+        """
+        p_liquid = self.porosity(h)
+        # for some unit volume of soil
+        v_liquid = p_liquid
+        v_soil_matter = 1.0 - p_liquid
+        
+        m_liquid = DENSITY_WATER * v_liquid
+        m_ice = m_liquid
+        v_ice = m_ice / DENSITY_ICE
+        
+        p_ice = v_ice / (v_ice + v_soil_matter)
+        return p_ice
+        
 
     def height_porosity_integrand(self, h) -> float:
-        return self.porosity(h) * h
+        return self.porosity_frozen(h) * h
     
     def height_porosity_integration(self, h1, h2) -> float:
         integral, error = quad(self.height_porosity_integrand, h1, h2)
@@ -69,6 +92,7 @@ class SoilMoistureModel(ABC):
         result = root_scalar(objective, args=(integral_val,), bracket=[0, 10], method="brentq")
         assert result.converged
         return result.root
+    
     
 class SoilDepthIntegration:
     def __init__(self, smm: SoilMoistureModel, upper_thaw_depth_limit, N):
@@ -220,43 +244,44 @@ class SCReSALT_Invalid_SMM(SoilMoistureModel):
     """
     
     def __init__(self):
-        x1 = 0.01
-        x2 = 0.04
+        h0 = 0.01
+        h0_end = 0.04
 
-        f1_slope = 0.7/10
-        f3_slope = 0.1/10
+        h0_m = 0.7/10
+        h1_m = 0.1/10
 
-        y1 = 1/f3_slope*f1_slope*x1
-        print("Transitions from 1st slope to 2nd slope between", x2, "and", y1)
-        assert y1 > x2
-        F1 = _Linear(f1_slope, 0.0)
+        # Solves eq. 31 for h1
+        h1_start = 1/h1_m*h0_m*h0
+        print("Transitions from 1st slope to 2nd slope between", h0_end, "and", h1_start)
+        assert h1_start > h0_end
+        F1 = _Linear(h0_m, 0.0)
 
-        def solve_quadratic_and_align_funcs(x2, y1, F1, f3_slope):
-            a = (F1.m - f3_slope)/(2*(x2-y1))
-            b = F1.m - 2*a*x2
-            c = F1(x2) - a*(x2**2) - b*x2
+        def solve_quadratic_and_align_funcs(h0_end, h1_start, F1, h1_m):
+            a = (F1.m - h1_m)/(2*(h0_end-h1_start))
+            b = F1.m - 2*a*h0_end
+            c = F1(h0_end) - a*(h0_end**2) - b*h0_end
             F2 = _Quadratic(a, b, c)
             
-            f3_start = F2(y1) - f3_slope * y1
-            F3 = _Linear(f3_slope, f3_start)
+            f3_start = F2(h1_start) - h1_m * h1_start
+            F3 = _Linear(h1_m, f3_start)
             return F2, F3
 
-        F2, F3 = solve_quadratic_and_align_funcs(x2, y1, F1, f3_slope)
+        F2, F3 = solve_quadratic_and_align_funcs(h0_end, h1_start, F1, h1_m)
         
         self.F1 = F1
         self.F2 = F2
         self.F3 = F3
-        self.x2 = x2
-        self.y1 = y1
+        self.h0_end = h0_end
+        self.h1_start = h1_start
 
-        print("Linear from", x1, self.x2, "with", self.F1.m, self.F1.b)
-        print("Quad from", self.x2, y1, "with", self.F2.a, self.F2.b, self.F2.c)
-        print("Linear from", y1, "with", self.F3.m, self.F3.b)
+        print("Linear from", 0.0, self.h0_end, "with", self.F1.m, self.F1.b)
+        print("Quad from", self.h0_end, self.h1_start, "with", self.F2.a, self.F2.b, self.F2.c)
+        print("Linear from", self.h1_start, "with", self.F3.m, self.F3.b)
         
     def deformation_from_thaw_depth(self, h: float) -> float:
-        if h <= self.x2:
+        if h <= self.h0_end:
             return self.F1(h)
-        elif h <= self.y1:
+        elif h <= self.h1_start:
             return self.F2(h)
         else:
             return self.F3(h)
@@ -265,13 +290,14 @@ class SCReSALT_Invalid_SMM(SoilMoistureModel):
         raise ValueError("unimplemented")
     
     def porosity(self, h: float):
-        if h <= self.x2:
+        if h <= self.h0_end:
             v = self.F1.get_derivative(h)
-        elif h <= self.y1:
+        elif h <= self.h1_start:
             v = self.F2.get_derivative(h)
         else:
             v = self.F3.get_derivative(h)
         return DENSITY_ICE * v / (DENSITY_WATER - DENSITY_ICE)
+    
     
 class _Linear:
     def __init__(self, m, b):
