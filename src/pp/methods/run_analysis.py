@@ -65,7 +65,7 @@ def run_analysis():
 
     interferograms = SCHAEFER_INTEFEROGRAMS
 
-    multi_threaded = True
+    multi_threaded = False
 
     # Use the geo-corrected interferogram products instead of radar geometry. Improves results.
     use_geo = True
