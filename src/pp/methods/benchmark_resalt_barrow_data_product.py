@@ -54,6 +54,7 @@ df_peak_alt = prepare_calm_data(calm_file, ignore_point_ids, start_year, end_yea
 
 # Stores information on the avg root DDT at measurement time across the years
 # TODO: technically this assumes each point was measured at the same time, which currently is true.
+df_peak_alt['sqrt_norm_ddt'] = np.sqrt(df_peak_alt['norm_ddt'].values)
 df_avg_measurement_alt_sqrt_ddt = df_peak_alt[['point_id', 'sqrt_norm_ddt']].groupby(['point_id']).mean()
 df_peak_alt = df_peak_alt.drop(['year', 'month', 'day', 'norm_ddt'], axis=1) # not needed anymore
 df_alt_gt = df_peak_alt.groupby("point_id").mean()
@@ -105,7 +106,7 @@ compute_stats(alt_pred, alt_gt)
 smm = LiuSMM()
 alts = []
 for sub in df_alt_merged['sub_pred']:
-    alt = smm.alt_from_deformation(sub)
+    alt = smm.thaw_depth_from_deformation(sub)
     alts.append(alt)
 alts = np.array(alts)
 

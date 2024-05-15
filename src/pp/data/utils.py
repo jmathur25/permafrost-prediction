@@ -13,8 +13,12 @@ def prompt_user(message) -> bool:
 def get_date_for_alos(alos) -> Tuple[str, datetime.datetime]:
     searchdir = ALOS_PALSAR_DATA_DIR / alos / ALOS_L1_0_DIRNAME
     files = os.listdir(searchdir)
-    assert len(files) == 2, f"Unexpected number of files in {searchdir}"
+    # 2 expected, and also pruning can leave just 1.
+    assert len(files) in [1, 2], f"Unexpected number of files in {searchdir}"
 
-    # the name that is not ARCHIVED_FILES is our date
-    datetime_str = files[0] if files[1] == "ARCHIVED_FILES" else files[1]
+    if len(files) == 2:
+        # the name that is not ARCHIVED_FILES is our date
+        datetime_str = files[0] if files[1] == "ARCHIVED_FILES" else files[1]
+    else:
+        datetime_str = files[0]
     return datetime_str, datetime.datetime.strptime(datetime_str, "%Y%m%d")
